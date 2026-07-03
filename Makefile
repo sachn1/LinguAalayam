@@ -14,7 +14,7 @@ install-local: install
 	fi
 
 check:
-	poetry run pre-commit run --all-files
+	PRE_COMMIT_NO_CONCURRENCY=1 poetry run pre-commit run --all-files
 	poetry run pytest --cov=linguaalayam --cov-fail-under=80
 
 lint:

@@ -14,10 +14,10 @@ from linguaalayam.api.dependencies import get_tools, get_translator
 from linguaalayam.llm.adapters.anthropic import AnthropicAdapter
 from linguaalayam.llm.adapters.nollm import NoLLMAdapter
 from linguaalayam.llm.adapters.openai import OpenAIAdapter
-from linguaalayam.morphology import analyse_word
 from linguaalayam.rag.pipeline import _SYNTHESIS_SYSTEM, _SYNTHESIS_TEMPLATE, _format_entries
 from linguaalayam.rag.query_understanding import understand_query
 from linguaalayam.transliteration import (
+    analyse_word,
     is_latin_script,
     malayalam_to_roman,
     roman_to_malayalam_candidates,
@@ -29,6 +29,37 @@ _NO_LLM = NoLLMAdapter()
 _TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
 _TEMPLATES.env.filters["romanise_ml"] = malayalam_to_roman
 _TEMPLATES.env.globals["app_version"] = importlib.metadata.version("linguaalayam")
+
+
+def _group_definitions(
+    definitions: list[tuple[str | None, str]],
+) -> list[tuple[str | None, list[str]]]:
+    """Group a flat list of (pos, text) pairs into (pos, [text, ...]) groups.
+
+    Preserves the first-seen order of POS tags while merging all definitions
+    that share the same POS into a single list.
+
+    Parameters
+    ----------
+    definitions : list[tuple[str | None, str]]
+        Flat list of ``(part-of-speech, definition-text)`` pairs as stored in the DB.
+
+    Returns
+    -------
+    list[tuple[str | None, list[str]]]
+        Ordered list of ``(pos, [definitions])`` groups, one per unique POS.
+    """
+    seen: dict[str | None, list[str]] = {}
+    order: list[str | None] = []
+    for pos, text in definitions:
+        if pos not in seen:
+            seen[pos] = []
+            order.append(pos)
+        seen[pos].append(text)
+    return [(pos, seen[pos]) for pos in order]
+
+
+_TEMPLATES.env.filters["group_definitions"] = _group_definitions
 
 router = APIRouter(include_in_schema=False)
 
@@ -139,7 +170,6 @@ def mcp_ping() -> HTMLResponse:
 def search(
     request: Request,
     query: Annotated[str, Query()] = "",
-    mode: Annotated[str, Query()] = "fuzzy",
     source: Annotated[str, Query()] = "",
     top_k: Annotated[int, Query()] = 10,
     lang: Annotated[str, Query()] = "en-US",
@@ -152,11 +182,9 @@ def search(
         The incoming HTTP request; headers ``X-Romanise``, ``X-LLM-Key``, and
         ``X-LLM-Provider`` are read for optional features.
     query : str, optional
-        Search term (English or Malayalam).
-    mode : str, optional
-        Lookup strategy: ``"exact"``, ``"fuzzy"`` (default), or ``"semantic"``.
+        Search term (English, Malayalam, or Manglish).
     source : str, optional
-        Corpus filter; ``"datuk"`` expands to both ``datuk`` and ``sayahna``.
+        Corpus filter; ``"ml_ml"`` expands to both ``datuk`` and ``sayahna``.
     top_k : int, optional
         Maximum number of results to return; default ``10``.
     lang : str, optional
@@ -170,10 +198,15 @@ def search(
     """
     results = []
     answer: str | None = None
+    varnam_used = False
     q = query.strip()
     _src = source.strip() or None
-    # "datuk" in the UI means "all ML→ML corpora" — include Sayahna automatically.
-    src: str | list[str] | None = ["datuk", "sayahna"] if _src == "datuk" else _src
+    # Expand logical source values to actual corpus names.
+    # "ml_ml" = all Malayalam→Malayalam corpora; no value = search all.
+    _EXPAND: dict[str, list[str]] = {
+        "ml_ml": ["datuk", "sayahna"],
+    }
+    src: str | list[str] | None = _EXPAND.get(_src, _src) if _src else None
     romanise = request.headers.get("X-Romanise", "").strip() == "1"
 
     translation = get_translator().translate(q, source_lang=lang) if q else None
@@ -183,33 +216,39 @@ def search(
     if q:
         headword = understand_query(q_en, llm=_NO_LLM).headword or q_en
         tools = get_tools()
-        if mode == "exact":
-            results = tools.exact_lookup(headword, source=src)
-        elif mode == "semantic" or (mode == "fuzzy" and " " in headword):
-            # Multi-word fuzzy queries (understand_query couldn't reduce to single headword)
-            # are phrases/definitions — semantic retrieval handles them better than trigram.
+
+        # Always fuzzy — pg_trgm scores exact matches at 1.0 so they surface first.
+        # Multi-word queries fall through to semantic for phrase/description retrieval.
+        if " " in headword:
             results = tools.semantic_lookup(q_en, top_k=top_k, source=src)
         else:
             results = tools.fuzzy_lookup(headword, source=src, top_k=top_k)
 
-        # Manglish fallback: Latin query with no results → try transliterated candidates.
+        # Manglish fallback: Latin query with no results → try Varnam API candidates.
         # Skip when translation already ran — the headword is real English, not Manglish.
         if (
             not results
             and is_latin_script(headword)
             and not (translation and translation.was_translated)
         ):
-            for ml_candidate in roman_to_malayalam_candidates(headword):
-                if mode == "exact":
-                    results = tools.exact_lookup(ml_candidate, source=src)
-                else:
-                    results = tools.fuzzy_lookup(ml_candidate, source=src, top_k=top_k)
+            from linguaalayam.varnam import manglish_to_malayalam  # lazy import
+
+            ml_candidates = manglish_to_malayalam(headword)
+
+            # Fall back to local scheme-based candidates if Varnam is unavailable.
+            if not ml_candidates:
+                ml_candidates = roman_to_malayalam_candidates(headword)
+            else:
+                varnam_used = True
+
+            for ml_candidate in ml_candidates:
+                results = tools.fuzzy_lookup(ml_candidate, source=src, top_k=top_k)
                 if results:
+                    headword = ml_candidate
                     break
 
-        # Semantic fallback for single-word fuzzy queries that got no results.
-        # Multi-word queries already went through semantic above; skip to avoid double call.
-        if not results and mode == "fuzzy" and " " not in headword:
+        # Semantic fallback for single-word queries that got no fuzzy results.
+        if not results and " " not in headword:
             results = tools.semantic_lookup(q_en, top_k=top_k, source=src)
 
         llm_key = request.headers.get("X-LLM-Key", "").strip()
@@ -224,27 +263,13 @@ def search(
                 log.warning("LLM synthesis failed for %r", q, exc_info=True)
 
     # Analyse the search query itself (shown above results as query context).
-    # Only meaningful for Malayalam — skip for other non-Latin scripts (Hindi, Arabic, etc.).
+    # Only meaningful for Malayalam — skip for other non-Latin scripts.
     query_morphology: str | None = None
     source_is_ml = translation is None or translation.source_lang == "ml"
     if q and source_is_ml and not is_latin_script(q):
         labels = analyse_word(q)
         if labels:
             query_morphology = " / ".join(labels)
-
-    # Analyse ML→ML result headwords for in-card display (headwords are often inflected).
-    # Skipping olam_enml/ekkurup: English headwords produce no useful output from mlmorph.
-    morphology: dict[str, str] = {}
-    for r in results:
-        if r.get("source") in {"datuk", "sayahna"} and r.get("headword"):
-            hw = r["headword"]
-            if hw not in morphology:
-                # Sayahna headwords may list multiple variants (e.g. "foo, bar")
-                # analyse only the first
-                hw_for_analysis = hw.split(",")[0].strip() if "," in hw else hw
-                hw_labels = analyse_word(hw_for_analysis)
-                if hw_labels:
-                    morphology[hw] = " / ".join(hw_labels)
 
     return _TEMPLATES.TemplateResponse(
         request,
@@ -256,8 +281,9 @@ def search(
             "answer": answer,
             "source_filter": src,
             "romanise": romanise,
-            "morphology": morphology,
             "query_morphology": query_morphology,
             "translation": translation,
+            "headword_set": tools.ml_headword_set(),
+            "varnam_used": varnam_used,
         },
     )

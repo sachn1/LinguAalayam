@@ -7,7 +7,8 @@
 
 {% if results %}
 
-{# collect unique sources to detect multi-corpus results #}
+{# group results by corpus in display order #}
+{% set corpus_order = ['olam_enml', 'datuk', 'sayahna', 'ekkurup'] %}
 {% set ns = namespace(seen_sources=[]) %}
 {% for r in results %}
   {% if r.source not in ns.seen_sources %}
@@ -23,10 +24,19 @@
 <p class="query-morph-tag"><span class="ml">{{ headword }}</span> — {{ query_morphology }} <a href="https://morph.smc.org.in/" target="_blank" class="morph-credit" title="Morphological analysis by mlmorph (SMC)">mlmorph ↗</a></p>
 {% endif %}
 
+{# filter out low-confidence non-exact results #}
+{% set MIN_SCORE = 0.55 %}
+{% set filtered = [] %}
+{% for r in results %}
+  {% if r.match_type == 'exact' or r.score >= MIN_SCORE %}
+    {% set _ = filtered.append(r) %}
+  {% endif %}
+{% endfor %}
+
 <div class="results-meta-row">
   <p class="results-meta">
-    {{ results | length }} result{% if results | length != 1 %}s{% endif %}
-    {% if headword and headword != query %} for <strong>{{ headword }}</strong>{% endif %}
+    {{ filtered | length }} result{% if filtered | length != 1 %}s{% endif %}
+    {% if headword and headword != query %} for <strong class="ml">{{ headword }}</strong>{% if varnam_used %} <a href="https://varnamproject.com" target="_blank" class="morph-credit" title="Manglish transliteration by Varnam (Subin Siby)">Varnam ↗</a>{% endif %}{% endif %}
     {% if ns.seen_sources | length > 1 %}
     &nbsp;·&nbsp; <span class="multi-corpus-note" title="The same word can appear from multiple corpora — each provides different information.">{{ ns.seen_sources | length }} corpora</span>
     {% endif %}
@@ -39,99 +49,128 @@
   </button>
 </div>
 
-{% for r in results %}
+{# render results grouped by corpus #}
+{% for corpus in corpus_order %}
+  {% set corpus_results = filtered | selectattr('source', 'equalto', corpus) | list %}
+  {% if corpus_results %}
 
-{# source display name and direction #}
-{% if r.source == 'olam_enml' %}
-  {% set source_label = 'Olam' %}
-  {% set source_dir = 'EN → ML' %}
-  {% set def_is_ml = true %}
-  {% set head_is_ml = false %}
-{% elif r.source == 'datuk' %}
-  {% set source_label = 'Datuk' %}
-  {% set source_dir = 'ML → ML' %}
-  {% set def_is_ml = true %}
-  {% set head_is_ml = true %}
-{% elif r.source == 'sayahna' %}
-  {% set source_label = 'Sayahna' %}
-  {% set source_dir = 'ML → ML' %}
-  {% set def_is_ml = true %}
-  {% set head_is_ml = true %}
-{% else %}
-  {% set source_label = 'Ekkurup' %}
-  {% set source_dir = 'EN thesaurus' %}
-  {% set def_is_ml = false %}
-  {% set head_is_ml = false %}
-{% endif %}
-
-<div class="entry">
-  <div class="entry-header">
-    <span class="headword {% if head_is_ml %}ml{% endif %}">{{ r.headword }}{% if romanise and head_is_ml %} <span class="romanised romanised-head">{{ r.headword | romanise_ml }}</span>{% endif %}</span>
-    <span class="source-tag" title="{{ source_dir }}">{{ source_label }}</span>
-  </div>
-  {% if morphology and r.headword in morphology %}
-  <p class="morph-tag">{{ morphology[r.headword] }}</p>
-  {% endif %}
-  {% if r.source == 'sayahna' and 'ു്' in r.headword %}
-  <p class="archaic-note" title="This dictionary was written in 1917 and uses an older Malayalam script convention. The ending 'ു്' is an archaic word-boundary marker — you may see it written without this suffix in modern texts.">Archaic spelling (1917 orthography)</p>
+  {% if corpus == 'olam_enml' %}
+    {% set group_label = 'English → Malayalam' %}
+  {% elif corpus == 'datuk' %}
+    {% set group_label = 'Malayalam → Malayalam' %}
+  {% elif corpus == 'sayahna' %}
+    {% set group_label = 'Shabdataaravali 1917' %}
+  {% else %}
+    {% set group_label = 'Thesaurus' %}
   {% endif %}
 
-  {# --- definitions (olam_enml, datuk) --- #}
-  {% if r.data.definitions %}
-    <dl class="defs">
-    {% set ns2 = namespace(last_pos=False) %}
-    {% for pair in r.data.definitions %}
-      {% set pos = pair[0] %}
-      {% set text = pair[1] %}
-      {% if pos != ns2.last_pos %}
-        {% if ns2.last_pos is not sameas false %}</dd>{% endif %}
+  {% if ns.seen_sources | length > 1 %}
+  <p class="corpus-group-label">{{ group_label }}</p>
+  {% endif %}
+
+  {% for r in corpus_results %}
+
+  {% if r.source == 'olam_enml' %}
+    {% set source_label = 'Olam' %}
+    {% set source_dir = 'EN → ML' %}
+    {% set def_is_ml = true %}
+    {% set head_is_ml = false %}
+  {% elif r.source == 'datuk' %}
+    {% set source_label = 'Datuk' %}
+    {% set source_dir = 'ML → ML' %}
+    {% set def_is_ml = true %}
+    {% set head_is_ml = true %}
+  {% elif r.source == 'sayahna' %}
+    {% set source_label = 'Shabdataaravali 1917' %}
+    {% set source_dir = 'ML → ML' %}
+    {% set def_is_ml = true %}
+    {% set head_is_ml = true %}
+  {% else %}
+    {% set source_label = 'Ekkurup' %}
+    {% set source_dir = 'EN thesaurus' %}
+    {% set def_is_ml = false %}
+    {% set head_is_ml = false %}
+  {% endif %}
+
+  <div class="entry">
+    <div class="entry-header">
+      <span class="headword {% if head_is_ml %}ml{% endif %}">{{ r.headword }}{% if romanise and head_is_ml %} <span class="romanised romanised-head">{{ r.headword | romanise_ml }}</span>{% endif %}</span>
+      <span class="source-tag" title="{{ source_dir }}">{{ source_label }}</span>
+    </div>
+    {% if r.data.morphology %}
+    <p class="morph-tag">{{ r.data.morphology | join(' / ') }}</p>
+    {% endif %}
+    {% if r.source == 'sayahna' and 'ു്' in r.headword %}
+    <p class="archaic-note" title="This dictionary was written in 1917 and uses an older Malayalam script convention. The ending 'ു്' is an archaic word-boundary marker — you may see it written without this suffix in modern texts.">Archaic spelling (1917 orthography)</p>
+    {% endif %}
+
+    {# --- definitions (olam_enml, datuk, sayahna) — POS-grouped --- #}
+    {% if r.data.definitions %}
+      <dl class="defs">
+      {% for pos, texts in r.data.definitions | group_definitions %}
         <dt>{{ pos if pos else '—' }}</dt>
         <dd>
-          <span class="{% if def_is_ml %}ml{% endif %}">{{ text }}</span>
-          {% if romanise and def_is_ml %}<span class="romanised">{{ text | romanise_ml }}</span>{% endif %}
-        {% set ns2.last_pos = pos %}
-      {% else %}
-        <span class="def-sep">,</span> <span class="{% if def_is_ml %}ml{% endif %}">{{ text }}</span>
-        {% if romanise and def_is_ml %}<span class="romanised">{{ text | romanise_ml }}</span>{% endif %}
-      {% endif %}
-    {% endfor %}
-    {% if r.data.definitions %}</dd>{% endif %}
-    </dl>
-
-  {# --- explanations (sayahna supplementary notes) --- #}
-  {% if r.data.explanations %}
-    <ul class="explanations">
-    {% for note in r.data.explanations %}
-      <li class="ml">{{ note }}{% if romanise %} <span class="romanised">{{ note | romanise_ml }}</span>{% endif %}</li>
-    {% endfor %}
-    </ul>
-  {% endif %}
-
-  {# --- senses (ekkurup thesaurus) --- #}
-  {% elif r.data.senses %}
-    <dl class="defs">
-    {% for sense in r.data.senses %}
-      <dt>{{ sense.pos if sense.pos else '—' }}</dt>
-      <dd>
-        {% for group in sense.en %}
-          <span class="sense-group">{{ group | join(', ') }}</span>
-        {% endfor %}
-        {% if sense.ml %}
-          <span class="sense-arrow">→</span>
-          {% for group in sense.ml %}
-            <span class="ml">{{ group | join(', ') }}</span>
-            {% if romanise %}<span class="romanised">{{ group | join(', ') | romanise_ml }}</span>{% endif %}
+          {% for text in texts %}
+            {% if def_is_ml and headword_set is defined %}
+              {% for token in text.split(', ') %}
+                {% set word = token.strip() %}
+                {% if word and word in headword_set and word != r.headword %}
+                  <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false"
+                     hx-vals='{"query": "{{ word }}", "mode": "exact", "source": "", "lang": "ml"}'>{{ word }}</a>
+                {% else %}
+                  <span class="{% if def_is_ml %}ml{% endif %}">{{ word }}</span>
+                {% endif %}
+                {% if not loop.last %}<span class="def-sep">, </span>{% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="{% if def_is_ml %}ml{% endif %}">{{ text }}</span>
+            {% endif %}
+            {% if romanise and def_is_ml %}<span class="romanised">{{ text | romanise_ml }}</span>{% endif %}
+            {% if not loop.last %}<span class="def-sep"> · </span>{% endif %}
           {% endfor %}
-        {% endif %}
-      </dd>
-    {% endfor %}
-    </dl>
-  {% endif %}
+        </dd>
+      {% endfor %}
+      </dl>
 
-  {% if r.match_type != 'exact' %}
-  <p class="score">{{ (r.score * 100) | round | int }}% <span data-i18n="score_match">match</span></p>
+      {% if r.data.explanations %}
+      <ul class="explanations">
+      {% for note in r.data.explanations %}
+        <li class="ml">{{ note }}{% if romanise %} <span class="romanised">{{ note | romanise_ml }}</span>{% endif %}</li>
+      {% endfor %}
+      </ul>
+      {% endif %}
+
+    {# --- senses (ekkurup thesaurus) — first 2 senses shown, rest collapsed --- #}
+    {% elif r.data.senses %}
+      {% set sense_id = 'ek-' ~ loop.index0 ~ '-' ~ r.headword | replace(' ', '_') %}
+      <button class="show-more-btn" onclick="toggleSenses(this, '{{ sense_id }}')">
+        {{ r.data.senses | length }} sense{% if r.data.senses | length != 1 %}s{% endif %} — expand
+      </button>
+      <dl class="defs senses-extra" id="{{ sense_id }}" style="display:none">
+      {% for sense in r.data.senses %}
+        <dt>{{ sense.pos if sense.pos else '—' }}</dt>
+        <dd>
+          {% for group in sense.en %}
+            <span class="sense-group">{{ group | join(', ') }}</span>
+          {% endfor %}
+          {% if sense.ml %}
+            <span class="sense-arrow">→</span>
+            {% for group in sense.ml %}
+              <span class="ml">{{ group | join(', ') }}</span>
+              {% if romanise %}<span class="romanised">{{ group | join(', ') | romanise_ml }}</span>{% endif %}
+            {% endfor %}
+          {% endif %}
+        </dd>
+      {% endfor %}
+      </dl>
+    {% endif %}
+
+    {% if r.match_type != 'exact' %}
+    <p class="score">{{ (r.score * 100) | round | int }}% <span data-i18n="score_match">match</span></p>
+    {% endif %}
+  </div>
+  {% endfor %}
   {% endif %}
-</div>
 {% endfor %}
 
 {% elif query %}
@@ -139,100 +178,35 @@
 {% endif %}
 
 <style>
-  .answer-card {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-    font-size: 0.95rem;
-    line-height: 1.6;
-  }
+  .answer-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.6; }
   .answer-label { font-size: 0.7rem; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
-
   .results-meta { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem; }
   .multi-corpus-note { cursor: help; border-bottom: 1px dashed var(--border); }
-
-  .entry {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-bottom: 0.75rem;
-  }
-  .entry-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 0.6rem;
-    gap: 0.5rem;
-  }
+  .corpus-group-label { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 1.25rem 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+  .entry { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
+  .entry-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; gap: 0.5rem; }
   .headword { font-size: 1.15rem; font-weight: 700; }
-  .source-tag {
-    font-size: 0.7rem;
-    padding: 0.15rem 0.5rem;
-    border-radius: 99px;
-    background: #f5f0eb;
-    color: var(--accent);
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
+  .source-tag { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 99px; background: #f5f0eb; color: var(--accent); font-weight: 600; flex-shrink: 0; }
   dl.defs { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; align-items: baseline; }
-  dl.defs dt {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding-top: 0.15rem;
-    white-space: nowrap;
-  }
+  dl.defs dt { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; padding-top: 0.15rem; white-space: nowrap; }
   dl.defs dd { font-size: 0.9rem; line-height: 1.5; margin: 0; color: var(--text); }
   .def-sep { color: var(--text-muted); }
   .sense-group { color: var(--text-muted); }
   .sense-arrow { margin: 0 0.3rem; color: var(--text-muted); }
-
+  .def-link { color: var(--accent); text-decoration: none; cursor: pointer; border-bottom: 1px dotted var(--accent); }
+  .def-link:hover { border-bottom-style: solid; }
+  .show-more-btn { background: none; border: none; color: var(--accent); font-size: 0.78rem; cursor: pointer; padding: 0.3rem 0; font-family: inherit; margin-top: 0.3rem; display: block; }
+  .show-more-btn:hover { text-decoration: underline; }
   .score { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; }
-
   .romanised { font-size: 0.78rem; color: var(--text-muted); font-style: italic; margin-left: 0.35rem; }
   .romanised-head { font-size: 0.85rem; font-weight: 400; }
-
   .results-meta-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 1rem; gap: 0.5rem; }
   .results-meta-row .results-meta { margin-bottom: 0; }
-  .romanise-btn {
-    flex-shrink: 0;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 0.72rem;
-    font-family: inherit;
-    padding: 0.2rem 0.6rem;
-    cursor: pointer;
-    color: var(--text-muted);
-    white-space: nowrap;
-  }
-  .romanise-btn { position: relative; }
-  .romanise-btn::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
-    background: var(--text);
-    color: var(--surface);
-    font-size: 0.7rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
-    z-index: 10;
-  }
+  .romanise-btn { flex-shrink: 0; background: none; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.72rem; font-family: inherit; padding: 0.2rem 0.6rem; cursor: pointer; color: var(--text-muted); white-space: nowrap; position: relative; }
+  .romanise-btn::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px); right: 0; background: var(--text); color: var(--surface); font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 4px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 10; }
   .romanise-btn:hover::after { opacity: 1; }
   .romanise-btn:hover { border-color: var(--accent); color: var(--accent); }
   .romanise-btn.active { border-color: var(--accent); color: var(--accent); background: #fff8f0; }
-
   .empty { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
   .morph-tag { font-size: 0.68rem; color: var(--accent); font-style: italic; margin-bottom: 0.35rem; }
   .archaic-note { font-size: 0.68rem; color: var(--text-muted); font-style: italic; margin-bottom: 0.35rem; cursor: help; border-bottom: 1px dashed var(--border); display: inline-block; }
@@ -240,4 +214,19 @@
   .translation-note { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; font-style: italic; }
   .morph-credit { font-style: normal; font-size: 0.7rem; opacity: 0.6; color: inherit; margin-left: 0.4rem; text-decoration: none; }
   .morph-credit:hover { opacity: 1; text-decoration: underline; }
+  ul.explanations { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.9rem; }
+  ul.explanations li { margin-bottom: 0.2rem; color: var(--text); }
 </style>
+
+<script>
+function toggleSenses(btn, id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hidden = el.style.display === 'none';
+  el.style.display = hidden ? '' : 'none';
+  const count = el.querySelectorAll('dt').length;
+  btn.textContent = hidden
+    ? 'Show less'
+    : count + ' sense' + (count !== 1 ? 's' : '') + ' — expand';
+}
+</script>

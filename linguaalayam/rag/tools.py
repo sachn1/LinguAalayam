@@ -72,6 +72,29 @@ class DictionaryTools:
     ) -> None:
         self._session_factory = session_factory
         self._embedder = embedding_service
+        self._ml_headword_set: frozenset[str] | None = None
+
+    def ml_headword_set(self) -> frozenset[str]:
+        """Return a cached frozenset of all Malayalam headwords (datuk + sayahna).
+
+        Used by the results template to determine which definition tokens are
+        clickable (i.e. exist as their own dictionary entry). Loaded once on
+        first call and cached for the lifetime of the process.
+
+        Returns
+        -------
+        frozenset[str]
+            All headwords from ML→ML corpora.
+        """
+        if self._ml_headword_set is None:
+            with get_session(self._session_factory) as session:
+                rows = (
+                    session.query(DictionaryEntry.headword)
+                    .filter(DictionaryEntry.source.in_(["datuk", "sayahna"]))
+                    .all()
+                )
+            self._ml_headword_set = frozenset(r.headword for r in rows)
+        return self._ml_headword_set
 
     def exact_lookup(
         self,
