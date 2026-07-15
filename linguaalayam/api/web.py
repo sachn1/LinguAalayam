@@ -212,10 +212,10 @@ def search(
     translation = get_translator().translate(q, source_lang=lang) if q else None
     q_en = translation.text if translation else q  # English (or original if EN/ML)
 
+    tools = get_tools()
     headword = q_en
     if q:
         headword = understand_query(q_en, llm=_NO_LLM).headword or q_en
-        tools = get_tools()
 
         # Always fuzzy — pg_trgm scores exact matches at 1.0 so they surface first.
         # Multi-word queries fall through to semantic for phrase/description retrieval.
@@ -231,7 +231,7 @@ def search(
             and is_latin_script(headword)
             and not (translation and translation.was_translated)
         ):
-            from linguaalayam.varnam import manglish_to_malayalam  # lazy import
+            from linguaalayam.transliteration.varnam import manglish_to_malayalam  # lazy import
 
             ml_candidates = manglish_to_malayalam(headword)
 

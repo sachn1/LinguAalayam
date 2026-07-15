@@ -1,3 +1,12 @@
+# Vendors jayasree's runtime files from npm — kept out of the app image's
+# git history and layer, only the copied output below makes it into the final stage.
+FROM node:20-slim AS jsbuild
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY scripts/sync_jayasree.sh ./scripts/sync_jayasree.sh
+RUN bash scripts/sync_jayasree.sh
+
 FROM ghcr.io/sachn1/linguaalayam-base:latest
 
 WORKDIR /app
@@ -15,6 +24,7 @@ RUN poetry config virtualenvs.create false \
 COPY linguaalayam/ ./linguaalayam/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
+COPY --from=jsbuild /app/linguaalayam/static/vendor ./linguaalayam/static/vendor
 
 # Install the package itself
 RUN poetry install --without dev,huggingface --no-interaction

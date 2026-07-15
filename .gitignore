@@ -12,6 +12,8 @@ data/eval/corpus_sample.jsonl
 *.json
 !*/static/locales/*.json
 !*/static/manifest.json
+!/package.json
+!/package-lock.json
 
 # hydra
 outputs/
@@ -38,6 +40,10 @@ uv.lock
 
 # mlflow
 mlruns/
+
+# jayasree — vendored from npm at build time, never committed (see make sync-jayasree)
+node_modules/
+linguaalayam/static/vendor/
 
 # Android — build output and signing keys, never commit
 *.apk

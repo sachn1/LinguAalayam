@@ -29,6 +29,7 @@ The joke lands because it is barely a joke. A large share of Malayalam speakers 
 - **Morphological context**: inflected forms like *കേരളത്തിൻറെ* are parsed to show the base word and grammatical role, powered by [mlmorph](https://morph.smc.org.in/).
 - **Manglish search**: type *oduka*, *santhosham*, *veedu* in Roman script and get Malayalam results, powered by [Varnam](https://varnamproject.com) (Subin Siby).
 - **Clickable definitions**: words in definitions that exist as their own dictionary entries are clickable links.
+- **Handwriting trace**: tap the trace icon next to a Malayalam word to watch it animated stroke by stroke, powered by [jayasree](https://github.com/sachn1/jayasree).
 - **Four corpora**: Olam (EN→ML), Datuk (ML→ML), Shabdataaravali/Sayahna (classical ML→ML, 1917), Ekkurup (EN thesaurus).
 
 We are bringing in more features for you here!

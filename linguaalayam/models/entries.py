@@ -13,7 +13,7 @@ def _compute_morphology(headword: str) -> list[str] | None:
     and never recomputed at query time.
     """
     try:
-        from linguaalayam.morphology import analyse_word
+        from linguaalayam.transliteration.morphology import analyse_word
 
         return analyse_word(headword.split(",")[0].strip() if "," in headword else headword)
     except Exception:

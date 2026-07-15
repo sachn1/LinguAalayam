@@ -71,7 +71,10 @@ def manglish_to_malayalam(word: str) -> list[str]:
         log.warning("Varnam API returned non-JSON response for %r", word)
         return []
 
-    if not isinstance(data, dict) or not data.get("success"):
+    if not isinstance(data, dict):
+        log.warning("Varnam API returned non-object JSON for %r", word)
+        return []
+    if not data.get("success"):
         log.debug("Varnam API unsuccessful for %r: %s", word, data.get("error", "unknown"))
         return []
 

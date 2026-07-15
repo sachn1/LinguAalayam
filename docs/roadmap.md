@@ -43,7 +43,7 @@
 - [x] **UI language toggle** — English / Malayalam interface labels; JSON locale bundles, no page reload
 - [x] **Romanised output toggle** — Malayalam definitions returned with ISO romanisation alongside for users who cannot read the script (toggle with **A ↔ അ** button)
 - [x] **Smart multi-word search** — phrases and definition queries (multiple words in fuzzy mode) automatically route to semantic retrieval instead of trigram matching
-- [x] **Manglish input (formal romanisation)** — Latin queries that miss exact/fuzzy are tried against multiple formal transliteration schemes; falls back to semantic if no match. Known limitation: informal romanisation ("oduka") is not reliably handled — see v2.3.
+- [x] **Manglish input (formal romanisation)** — Latin queries that miss exact/fuzzy are tried against multiple formal transliteration schemes; falls back to semantic if no match. Known limitation: informal romanisation ("oduka") is not reliably handled — resolved in v2.8 via Varnam.
 - [x] **Evaluation harness** — corpus-derived query sets (10 intents, EN + ML inputs, generated from live DB); offline model comparison with per-intent metrics and MLflow tracking
 
 ### v2.3 — Logo, MCP setup page, and OAuth
@@ -68,13 +68,23 @@
 - [x] **Open data attribution** — `DATA_SOURCES.md` with per-dataset authors and licences (ODbL for Olam/Datuk, CC BY-SA 4.0 for Ekkurup by E.K. Kurup); footer and settings sidebar updated
 - [x] **Service worker v2** — static assets cached first, pages network-first with offline fallback
 
-### v2.8 — Word of the Day
+### v2.8 — Informal Manglish, ingest-time morphology, and UI cleanup
+- [x] **Informal Manglish via Varnam** — Latin queries that miss exact/fuzzy now try the [Varnam](https://varnamproject.com) API for informal romanisation (e.g. *oduka* → *ഓടുക*) before falling back to the local formal transliteration schemes from v2.2; resolves the informal-romanisation gap noted in v2.2
+- [x] **Search mode removed** — the exact/fuzzy/semantic selector is gone from both UI and `/search`; retrieval is always trigram-first (exact matches score 1.0) with automatic semantic fallback, simplifying the query surface
+- [x] **`ml_ml` source filter** — Datuk + Sayahna merged under one "All Malayalam → Malayalam" UI option; the old `datuk`-expands-to-both behaviour is now explicit
+- [x] **Morphology computed at ingest time** — `DatukEntry`/`SayahnaEntry` store mlmorph analysis at parse time instead of recomputing it per search request
+- [x] **Clickable definitions** — ML→ML definition tokens that exist as their own headword become links, via a cached `DictionaryTools.ml_headword_set()`
+- [x] **`transliteration/` package** — `morphology.py`, `varnam.py`, and the existing romanisation helpers (`core.py`) consolidated under one package
+- [x] **Search UI simplification** — visible language dropdown removed (kept only as a hidden field driven by speech recognition / browser locale); mode selector and its help text removed
+- [x] **Handwriting trace** — [jayasree](https://github.com/sachn1/jayasree) (published to npm, formerly the malayalam-stroker repo) animates stroke-by-stroke handwriting for Malayalam headwords; trace button on Datuk/Sayahna entries, lazy-loaded client-side so the ~11.6MB glyph/stroke data is never fetched unless clicked; vendored from npm at build time via `make sync-jayasree`, no runtime CDN dependency
+
+### v2.9 — Word of the Day
 - [ ] **Phonetic Manglish index** — add `headword_roman` column storing ml2en output for each Malayalam headword; pg_trgm index enables reliable informal Manglish matching (e.g. "oduka" → "otuka" → "ഓടുക") without the ISO 15919 formalism gap; requires migration + re-ingest
 - [ ] **Word of the Day** — daily featured word, filtered by frequency list to exclude common words (top 5k excluded); alternates EN/ML by default
 - [ ] **User preference** — app settings: EN only / ML only / alternate; stored in `localStorage`
 - [ ] **Push notifications** — service worker push for word-of-the-day on Android
 
-### v2.9 — On-device AI synthesis (in-app purchase)
+### v3.0 — On-device AI synthesis (in-app purchase)
 - [ ] Generate synthetic (query → answer) training pairs from existing corpus (headword + POS + definition + synonyms)
 - [ ] Fine-tune a small multilingual model on Malayalam dictionary Q&A
 - [ ] Quality eval harness before shipping — answer quality metrics (BLEU + human eval on Malayalam output); do not ship without passing eval
@@ -85,7 +95,6 @@
 ### Backlog
 - [ ] **Production embedding upgrade** — eval confirms the current model underperforms on Malayalam semantic and cross-lingual queries; upgrade and re-ingest (~2h CPU); no schema change
 - [ ] **Cross-lingual result bridging** — EN query surfaces Malayalam equivalents; ML query surfaces English equivalents
-- [ ] **Multilingual query input** — detect non-EN/ML query language (German, French, etc.), translate to EN via LLM adapter, return EN/ML results as usual; no new locale files needed
 - [ ] `ml_from_ml_semantic` retrieval quality — definition → headword currently at 20% hit@1; revisit after embedding upgrade
 - [ ] Reranker for mixed-script result sets — deduplicate and rerank exact + fuzzy + semantic hits in a single pass
 - [ ] Explore English gloss of ML→ML definitions (requires hosted model or translation API budget)

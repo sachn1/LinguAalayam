@@ -95,6 +95,11 @@
   <div class="entry">
     <div class="entry-header">
       <span class="headword {% if head_is_ml %}ml{% endif %}">{{ r.headword }}{% if romanise and head_is_ml %} <span class="romanised romanised-head">{{ r.headword | romanise_ml }}</span>{% endif %}</span>
+      {% if head_is_ml %}
+      <button class="trace-btn" type="button" data-trace-word="{{ r.headword.split(',')[0].strip() }}" onclick="traceWord(this, this.dataset.traceWord)" aria-label="Trace handwriting" data-tooltip="Watch this word written stroke by stroke">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+      </button>
+      {% endif %}
       <span class="source-tag" title="{{ source_dir }}">{{ source_label }}</span>
     </div>
     {% if r.data.morphology %}
@@ -103,6 +108,7 @@
     {% if r.source == 'sayahna' and 'ു്' in r.headword %}
     <p class="archaic-note" title="This dictionary was written in 1917 and uses an older Malayalam script convention. The ending 'ു്' is an archaic word-boundary marker — you may see it written without this suffix in modern texts.">Archaic spelling (1917 orthography)</p>
     {% endif %}
+    <div class="trace-stage" hidden></div>
 
     {# --- definitions (olam_enml, datuk, sayahna) — POS-grouped --- #}
     {% if r.data.definitions %}
@@ -116,7 +122,7 @@
                 {% set word = token.strip() %}
                 {% if word and word in headword_set and word != r.headword %}
                   <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false"
-                     hx-vals='{"query": "{{ word }}", "mode": "exact", "source": "", "lang": "ml"}'>{{ word }}</a>
+                     hx-vals='{"query": "{{ word }}", "source": "", "lang": "ml"}'>{{ word }}</a>
                 {% else %}
                   <span class="{% if def_is_ml %}ml{% endif %}">{{ word }}</span>
                 {% endif %}
@@ -216,6 +222,24 @@
   .morph-credit:hover { opacity: 1; text-decoration: underline; }
   ul.explanations { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.9rem; }
   ul.explanations li { margin-bottom: 0.2rem; color: var(--text); }
+  .trace-btn { flex-shrink: 0; background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.2rem 0.4rem; cursor: pointer; color: var(--text-muted); display: inline-flex; align-items: center; position: relative; }
+  .trace-btn::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--text); color: var(--surface); font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 4px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 10; }
+  .trace-btn:hover::after { opacity: 1; }
+  .trace-btn:hover, .trace-btn.active { border-color: var(--accent); color: var(--accent); }
+  .trace-stage { margin-top: 0.6rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: #fafafa; }
+  .trace-stage[hidden] { display: none; }
+  .trace-controls { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .speed-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--text-muted); }
+  .speed-slider { width: 80px; height: 4px; cursor: pointer; accent-color: var(--accent); }
+  .speed-value { font-size: 0.72rem; min-width: 2em; color: var(--text-muted); }
+  .replay-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.15rem 0.45rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); line-height: 1; }
+  .replay-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .trace-stage-error { font-size: 0.8rem; color: var(--text-muted); }
+  .trace-loading { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
+  .trace-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .trace-credit { display: block; font-size: 0.68rem; opacity: 0.6; margin-top: 0.4rem; text-decoration: none; color: inherit; }
+  .trace-credit:hover { opacity: 1; text-decoration: underline; }
 </style>
 
 <script>
@@ -228,5 +252,88 @@ function toggleSenses(btn, id) {
   btn.textContent = hidden
     ? 'Show less'
     : count + ' sense' + (count !== 1 ? 's' : '') + ' — expand';
+}
+
+// Lazy-loaded once per page — jayasree's glyph/stroke data is ~11.6MB, only
+// fetched the first time someone actually clicks a trace button.
+let _jayasreeModule = null;
+function loadJayasree() {
+  if (!_jayasreeModule) {
+    if (!document.getElementById('jayasree-style')) {
+      const link = document.createElement('link');
+      link.id = 'jayasree-style';
+      link.rel = 'stylesheet';
+      link.href = '/static/vendor/jayasree/style.css';
+      document.head.appendChild(link);
+    }
+    _jayasreeModule = import('/static/vendor/jayasree/index.js');
+  }
+  return _jayasreeModule;
+}
+
+async function traceWord(btn, word) {
+  const entry = btn.closest('.entry');
+  const stage = entry.querySelector('.trace-stage');
+  const active = btn.classList.contains('active');
+
+  if (active) {
+    btn.classList.remove('active');
+    stage.hidden = true;
+    stage._writer?.cancel();
+    return;
+  }
+
+  btn.classList.add('active');
+  stage.hidden = false;
+
+  if (stage._writer) {
+    const slider = stage.querySelector('.speed-slider');
+    stage._writer.play(word, { speed: parseFloat(slider.value) });
+    return;
+  }
+
+  // Guards against a second click landing here while the first click's
+  // fetch of jayasree's ~11.6MB data is still in flight — without this,
+  // the second call would tear down the DOM the first call is about to
+  // build into partway through.
+  if (stage.dataset.loading) return;
+  stage.dataset.loading = '1';
+
+  stage.innerHTML = '<div class="trace-loading"><span class="trace-spinner"></span> Loading handwriting data…</div>';
+  try {
+    const { createStrokeWriter } = await loadJayasree();
+    stage.innerHTML = '';
+    const controls = document.createElement('div');
+    controls.className = 'trace-controls';
+    controls.innerHTML = '<label class="speed-label">Speed <input type="range" class="speed-slider" min="0.25" max="3" step="0.25" value="1"> <span class="speed-value">1\u00d7</span></label> <button class="replay-btn" type="button" title="Replay">\u21bb</button>';
+    stage.appendChild(controls);
+    const slider = controls.querySelector('.speed-slider');
+    const speedVal = controls.querySelector('.speed-value');
+    slider.addEventListener('input', () => { speedVal.textContent = slider.value + '×'; });
+    const writerContainer = document.createElement('div');
+    writerContainer.className = 'trace-writer';
+    stage.appendChild(writerContainer);
+    const writer = createStrokeWriter(writerContainer);
+    await writer.load();
+    await writer.loadStrokes();
+    controls.querySelector('.replay-btn').addEventListener('click', () => {
+      writer.play(word, { speed: parseFloat(slider.value) });
+    });
+    const credit = document.createElement('a');
+    credit.href = 'https://github.com/sachn1/jayasree';
+    credit.target = '_blank';
+    credit.className = 'trace-credit';
+    credit.title = 'Handwriting animation by jayasree';
+    credit.textContent = 'jayasree ↗';
+    stage.appendChild(credit);
+    stage._writer = writer;
+    stage._word = word;
+    await writer.play(word, { speed: parseFloat(slider.value) });
+  } catch (err) {
+    stage.innerHTML = '<p class="trace-stage-error">Couldn\'t load the trace animation.</p>';
+    console.error('jayasree trace failed', err);
+  } finally {
+    delete stage.dataset.loading;
+  }
 }
 </script>

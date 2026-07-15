@@ -8,6 +8,7 @@
 - Python 3.11+
 - [Poetry](https://python-poetry.org/docs/#installation)
 - Docker (for the local Postgres + pgvector container)
+- Node.js 20+ (only for `make sync-jayasree` — vendors the handwriting-trace widget; the app runs fine without it, just without the trace button)
 
 ---
 
@@ -31,6 +32,7 @@ docker exec -it linguaalayam psql -U postgres -c "CREATE DATABASE linguaalayam;"
 ```bash
 poetry install
 poetry run pre-commit install
+make sync-jayasree   # optional — vendors the handwriting-trace widget from npm
 ```
 
 ---
