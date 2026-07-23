@@ -55,12 +55,18 @@ def _get_analyser():
 
 
 @lru_cache(maxsize=4096)
-def analyse_word(word: str) -> list[str] | None:
-    """Return human-readable morphological labels for a Malayalam word, or None."""
+def _analyse(word: str) -> tuple[tuple[str, int], ...] | None:
+    """Return the raw mlmorph FST analyses for `word` as (analysis, weight) pairs, or None."""
     try:
         results = _get_analyser().analyse(word.translate(_CHILLU))
     except Exception:
         return None
+    return tuple(results) if results else None
+
+
+def analyse_word(word: str) -> list[str] | None:
+    """Return human-readable morphological labels for a Malayalam word, or None."""
+    results = _analyse(word)
     if not results:
         return None
 
@@ -90,3 +96,30 @@ def analyse_word(word: str) -> list[str] | None:
             labels.append(label)
 
     return labels if labels else None
+
+
+def get_lemma(word: str) -> str | None:
+    """Return mlmorph's dictionary root/lemma for `word`, or None if unanalysable.
+
+    Used to relate an inflected surface form (e.g. നിന്ദിക്കുന്നു) back to the
+    dictionary headword it inflects (നിന്ദിക്കുക), for search ranking — trigram
+    similarity alone can't distinguish that from an unrelated but similarly
+    spelled word. Picks the lowest-weight (most likely) FST analysis when a
+    word has several. Returns None for loanwords, English, or other words
+    mlmorph can't segment.
+
+    mlmorph tags input it can't segment as a foreign word (``run<fw>``),
+    echoing the word back as its own "root" as a fallback rather than a real
+    analysis — those are excluded, otherwise every English/OOV query would
+    look like a trivial self-lemma and wrongly read as a confirmed relation
+    to any identically-spelled fuzzy candidate (see fuzzy_lookup/lemma_lookup
+    in rag/tools.py).
+    """
+    results = _analyse(word)
+    if not results:
+        return None
+    real = [r for r in results if not r[0].endswith("<fw>")]
+    if not real:
+        return None
+    raw_root = min(real, key=lambda r: r[1])[0].split("<")[0].strip()
+    return raw_root or None

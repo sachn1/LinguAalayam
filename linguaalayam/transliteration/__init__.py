@@ -6,7 +6,7 @@ from .core import (
     normalize_roman,
     roman_to_malayalam_candidates,
 )
-from .morphology import analyse_word
+from .morphology import analyse_word, get_lemma
 from .varnam import manglish_to_malayalam
 
 __all__ = [
@@ -15,5 +15,6 @@ __all__ = [
     "normalize_roman",
     "roman_to_malayalam_candidates",
     "analyse_word",
+    "get_lemma",
     "manglish_to_malayalam",
 ]
