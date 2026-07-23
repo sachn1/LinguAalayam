@@ -19,7 +19,7 @@ Type a word in the search bar and results appear automatically. There is no mode
 
 ## Voice search
 
-On browsers that support speech recognition (Chrome, Edge, Safari), a microphone icon appears inside the search bar. Tap it, speak, and the transcribed text is searched automatically. The speech language is set from your browser locale.
+On browsers that support speech recognition (Chrome, Edge, Safari), a microphone icon appears inside the search bar. Tap it, speak, and the transcribed text is searched automatically. The first time you use it, a short prompt asks which language you'll be speaking — your choice is remembered after that. You can change it anytime via the flag icon next to the mic, which stays visibly grouped with it so it's clear it controls the *voice* language, not the interface or search language.
 
 ---
 
@@ -65,6 +65,7 @@ By default, results are raw dictionary entries. Add an API key in [Settings](/se
 
 - **No results?** Try removing the corpus filter.
 - **Manglish search:** *oduka* → *ഓടുക* is powered by [Varnam](https://varnamproject.com) (Subin Siby).
+- **Word valid in both languages?** Some words are real in both English and Manglish (*kali* → the goddess Kali, or *കലി*, "anger"). When that happens, the English result shows as usual, with a collapsed "Did you mean this in Malayalam?" link below it.
 - **Morphological context:** for Malayalam queries, the base form and grammatical role are shown above results, powered by [mlmorph](https://morph.smc.org.in/).
 - **MCP for AI assistants:** LinguAalayam is available as an MCP server at `https://linguaalayam.org/mcp`. See the [MCP setup guide](../linguaalayam/mcp/README.md) to connect Claude, Cursor, Windsurf, or Cline.
 

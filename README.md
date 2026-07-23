@@ -25,7 +25,7 @@ There's an old joke about Neil Armstrong stepping off the Apollo Lunar Module on
 The joke lands because it is barely a joke. A large share of Malayalam speakers live outside Kerala <sup>[[1](https://timesofindia.indiatimes.com/city/kochi/keralites-working-182-countries-worldwide/articleshow/105460653.cms)]</sup> and their everyday language is a mix: code-switching between Malayalam, English, and Manglish. Linguaalayam is built with them in mind::
 
 - **Romanisation toggle**: Malayalam definitions shown alongside Roman-script transliteration, so you can read while still learning the script.
-- **Voice search**: tap the mic icon in the search bar to speak your query; speech language follows your browser locale.
+- **Voice search**: tap the mic icon in the search bar to speak your query; pick your speech language once (prompted on first use), change it anytime via the flag icon next to the mic.
 - **Morphological context**: inflected forms like *കേരളത്തിൻറെ* are parsed to show the base word and grammatical role, powered by [mlmorph](https://morph.smc.org.in/).
 - **Manglish search**: type *oduka*, *santhosham*, *veedu* in Roman script and get Malayalam results, powered by [Varnam](https://varnamproject.com) (Subin Siby).
 - **Clickable definitions**: words in definitions that exist as their own dictionary entries are clickable links.
