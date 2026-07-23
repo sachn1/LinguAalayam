@@ -25,6 +25,8 @@ services:
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-linguaalayam}
       MCP_ISSUER_URL: ${MCP_ISSUER_URL:-http://localhost:8000/mcp}
+      ADMIN_USER: ${ADMIN_USER:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
