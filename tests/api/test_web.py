@@ -37,6 +37,7 @@ def mock_tools():
     t = MagicMock()
     t.exact_lookup.return_value = []
     t.fuzzy_lookup.return_value = []
+    t.lemma_lookup.return_value = []
     t.semantic_lookup.return_value = []
     t.ml_headword_set.return_value = frozenset()
     return t
@@ -89,6 +90,50 @@ def test_search_no_results_shows_empty_state(client):
     assert "No results" in r.text
 
 
+# ── lemma-match suppression of coincidental spelling matches ───────────────────
+
+
+def test_search_lemma_hit_suppresses_unrelated_fuzzy_matches(client, mock_tools):
+    """A lemma_lookup hit is positive evidence for the query's root — once it
+    exists, plain-fuzzy candidates (confirmed unrelated, not just lower-scoring)
+    should be dropped rather than shown alongside it."""
+    mock_tools.lemma_lookup.return_value = [_result(headword="നിന്ദിക്കുക", match_type="lemma")]
+    mock_tools.fuzzy_lookup.return_value = [
+        _result(headword="നന്ദിക്കുക", source="datuk", match_type="fuzzy"),
+    ]
+    r = client.get("/search?query=നിന്ദിക്കുന്നു")
+    assert r.status_code == 200
+    assert "നിന്ദിക്കുക" in r.text
+    assert "നന്ദിക്കുക" not in r.text
+
+
+def test_search_reclassified_lemma_fuzzy_hit_suppresses_other_fuzzy_matches(client, mock_tools):
+    """fuzzy_lookup itself may reclassify a candidate as match_type='lemma' (see
+    DictionaryTools.fuzzy_lookup) — that alone should also trigger suppression
+    of the remaining plain-fuzzy candidates, with no lemma_lookup hit needed."""
+    mock_tools.fuzzy_lookup.return_value = [
+        _result(headword="നിന്ദിക്കുന്നു", source="datuk", match_type="lemma"),
+        _result(headword="നിനാദിക്കുക", source="datuk", match_type="fuzzy"),
+    ]
+    r = client.get("/search?query=നിന്ദിക്കുക")
+    assert r.status_code == 200
+    assert "നിന്ദിക്കുന്നു" in r.text
+    assert "നിനാദിക്കുക" not in r.text
+
+
+def test_search_no_lemma_signal_keeps_all_fuzzy_matches(client, mock_tools):
+    """With no lemma match anywhere (the common case — most queries are already
+    base forms or aren't Malayalam at all), plain-fuzzy results are unaffected."""
+    mock_tools.fuzzy_lookup.return_value = [
+        _result(headword="run", match_type="fuzzy"),
+        _result(headword="ran", source="datuk", match_type="fuzzy"),
+    ]
+    r = client.get("/search?query=run")
+    assert r.status_code == 200
+    assert "run" in r.text
+    assert "ran" in r.text
+
+
 # ── semantic fallback ─────────────────────────────────────────────────────────
 
 
@@ -122,11 +167,10 @@ def test_search_latin_no_results_tries_varnam(client, mock_tools):
 
 
 def test_search_varnam_success_sets_headword(client, mock_tools):
-    """When Varnam returns a candidate that has results, headword should update to it."""
-    mock_tools.fuzzy_lookup.side_effect = [
-        [],
-        [_result(headword="ഓടുക", source="datuk")],
-    ]  # miss, then hit
+    """When Varnam returns a candidate that exists (exact/lemma), headword should update to it."""
+    mock_tools.exact_lookup.return_value = [
+        _result(headword="ഓടുക", source="datuk", match_type="exact")
+    ]
     with patch(
         "linguaalayam.transliteration.varnam.manglish_to_malayalam",
         return_value=["ഓടുക"],

@@ -5,12 +5,28 @@
 </div>
 {% endif %}
 
-{% if results %}
+{# filter out low-confidence non-exact, non-lemma results. lemma matches are
+   exempt from the score threshold because they're confirmed grammatically
+   related to the query (a shared mlmorph root), regardless of how far their
+   spelling has drifted from it — see rag/tools.py fuzzy_lookup/lemma_lookup.
+   Computed before the branch below so "no confident results" (raw results
+   non-empty but nothing clears the bar — e.g. weak spelling coincidences)
+   shows the same "no results" state as truly empty results, instead of a
+   confusing "0 results" heading with nothing under it. #}
+{% set MIN_SCORE = 0.55 %}
+{% set filtered = [] %}
+{% for r in results %}
+  {% if r.match_type == 'exact' or r.match_type == 'lemma' or r.score >= MIN_SCORE %}
+    {% set _ = filtered.append(r) %}
+  {% endif %}
+{% endfor %}
+
+{% if filtered %}
 
 {# group results by corpus in display order #}
 {% set corpus_order = ['olam_enml', 'datuk', 'sayahna', 'ekkurup'] %}
 {% set ns = namespace(seen_sources=[]) %}
-{% for r in results %}
+{% for r in filtered %}
   {% if r.source not in ns.seen_sources %}
     {% set ns.seen_sources = ns.seen_sources + [r.source] %}
   {% endif %}
@@ -21,17 +37,8 @@
 {% endif %}
 
 {% if query_morphology %}
-<p class="query-morph-tag"><span class="ml">{{ headword }}</span> — {{ query_morphology }} <a href="https://morph.smc.org.in/" target="_blank" class="morph-credit" title="Morphological analysis by mlmorph (SMC)">mlmorph ↗</a></p>
+<p class="query-morph-tag"><span class="ml">{{ headword }}</span> — {{ query_morphology }} <a href="https://morph.smc.org.in/" target="_blank" class="morph-credit" title="Morphological analysis by mlmorph (SMC)" onclick="trackClick('mlmorph')">mlmorph ↗</a></p>
 {% endif %}
-
-{# filter out low-confidence non-exact results #}
-{% set MIN_SCORE = 0.55 %}
-{% set filtered = [] %}
-{% for r in results %}
-  {% if r.match_type == 'exact' or r.score >= MIN_SCORE %}
-    {% set _ = filtered.append(r) %}
-  {% endif %}
-{% endfor %}
 
 <div class="results-meta-row">
   <p class="results-meta">
@@ -44,10 +51,32 @@
   {% set _rbtn_class = "romanise-btn active" if romanise else "romanise-btn" %}
   {% set _rbtn_arg = "true" if romanise else "false" %}
   {% set _rbtn_tip = "Hide romanisation" if romanise else "Show romanisation — Roman letters alongside Malayalam text" %}
-  <button class="{{ _rbtn_class }}" onclick="toggleRomanise({{ _rbtn_arg }})" data-tooltip="{{ _rbtn_tip }}">
+  <button class="{{ _rbtn_class }}" onclick="trackClick('ml2en'); toggleRomanise({{ _rbtn_arg }})" data-tooltip="{{ _rbtn_tip }}">
     A ↔ അ
   </button>
 </div>
+
+{% if varnam_alternatives %}
+<p class="varnam-alt-note">Or did you mean
+  {% for word in varnam_alternatives %}
+  <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false" onclick="setSearchBox('{{ word }}')"
+     hx-vals='{"query": "{{ word }}", "source": "", "lang": "ml"}'>{{ word }}</a>{% if not loop.last %}, {% endif %}
+  {% endfor %}?
+</p>
+{% endif %}
+
+{% if manglish_suggestions %}
+<details class="manglish-suggestions">
+  <summary>Did you mean this in Malayalam?</summary>
+  <p class="varnam-alt-note">
+    {% for word in manglish_suggestions %}
+    <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false" onclick="setSearchBox('{{ word }}')"
+       hx-vals='{"query": "{{ word }}", "source": "", "lang": "ml"}'>{{ word }}</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+    <a href="https://varnamproject.com" target="_blank" class="morph-credit" title="Manglish transliteration by Varnam (Subin Siby)">Varnam ↗</a>
+  </p>
+</details>
+{% endif %}
 
 {# render results grouped by corpus #}
 {% for corpus in corpus_order %}
@@ -96,9 +125,12 @@
     <div class="entry-header">
       <span class="headword {% if head_is_ml %}ml{% endif %}">{{ r.headword }}{% if romanise and head_is_ml %} <span class="romanised romanised-head">{{ r.headword | romanise_ml }}</span>{% endif %}</span>
       {% if head_is_ml %}
-      <button class="trace-btn" type="button" data-trace-word="{{ r.headword.split(',')[0].strip() }}" onclick="traceWord(this, this.dataset.traceWord)" aria-label="Trace handwriting" data-tooltip="Watch this word written stroke by stroke">
+      <button class="trace-btn" type="button" data-trace-word="{{ r.headword.split(',')[0].strip() }}" onclick="trackClick('jayasree'); traceWord(this, this.dataset.traceWord)" aria-label="Trace handwriting" data-tooltip="Watch this word written stroke by stroke">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
       </button>
+      {% endif %}
+      {% if r.match_type == 'lemma' %}
+      <span class="lemma-tag" title="Identified by morphological analysis as a grammatical form of your search term — not just a similar spelling">↳ related form</span>
       {% endif %}
       <span class="source-tag" title="{{ source_dir }}">{{ source_label }}</span>
     </div>
@@ -121,7 +153,7 @@
               {% for token in text.split(', ') %}
                 {% set word = token.strip() %}
                 {% if word and word in headword_set and word != r.headword %}
-                  <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false"
+                  <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false" onclick="setSearchBox('{{ word }}')"
                      hx-vals='{"query": "{{ word }}", "source": "", "lang": "ml"}'>{{ word }}</a>
                 {% else %}
                   <span class="{% if def_is_ml %}ml{% endif %}">{{ word }}</span>
@@ -192,6 +224,7 @@
   .entry { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
   .entry-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; gap: 0.5rem; }
   .headword { font-size: 1.15rem; font-weight: 700; }
+  .lemma-tag { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; color: var(--accent); background: #f0ecfa; border-radius: 99px; padding: 0.15rem 0.55rem; cursor: help; white-space: nowrap; }
   .source-tag { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 99px; background: #f5f0eb; color: var(--accent); font-weight: 600; flex-shrink: 0; }
   dl.defs { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; align-items: baseline; }
   dl.defs dt { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; padding-top: 0.15rem; white-space: nowrap; }
@@ -218,6 +251,18 @@
   .archaic-note { font-size: 0.68rem; color: var(--text-muted); font-style: italic; margin-bottom: 0.35rem; cursor: help; border-bottom: 1px dashed var(--border); display: inline-block; }
   .query-morph-tag { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.6rem; font-style: italic; }
   .translation-note { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; font-style: italic; }
+  .varnam-alt-note { font-size: 0.8rem; color: var(--text-muted); margin: -0.3rem 0 0.8rem; }
+  .varnam-alt-note .def-link { margin: 0 0.15rem; }
+  .manglish-suggestions { margin: -0.3rem 0 0.8rem; }
+  .manglish-suggestions summary {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    width: fit-content;
+  }
+  .manglish-suggestions summary:hover { color: var(--accent); }
+  .manglish-suggestions .varnam-alt-note { margin: 0.4rem 0 0; }
   .morph-credit { font-style: normal; font-size: 0.7rem; opacity: 0.6; color: inherit; margin-left: 0.4rem; text-decoration: none; }
   .morph-credit:hover { opacity: 1; text-decoration: underline; }
   ul.explanations { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.9rem; }
