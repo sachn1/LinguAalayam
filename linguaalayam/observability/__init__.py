@@ -8,6 +8,7 @@ from .queries import (
     top_clients,
     top_outbound_clicks,
     top_queries,
+    top_user_agents,
     traffic_by_route_type,
 )
 from .router import router as click_tracking_router
@@ -23,5 +24,6 @@ __all__ = [
     "top_clients",
     "top_outbound_clicks",
     "top_queries",
+    "top_user_agents",
     "traffic_by_route_type",
 ]

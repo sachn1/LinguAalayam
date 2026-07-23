@@ -273,14 +273,21 @@ def search(
         if is_latin_script(headword) and not (translation and translation.was_translated):
             from linguaalayam.transliteration.varnam import manglish_to_malayalam  # lazy import
 
-            ml_candidates = manglish_to_malayalam(headword)
+            # Varnam's scheme treats a capital letter as a doubling signal, not
+            # emphasis — "Kali" (e.g. auto-capitalized by a mobile keyboard)
+            # produces garbage candidates like ക്കലി instead of "kali"'s കലി,
+            # കളി, കാളി. Lowercase before calling it so casing never affects
+            # the Manglish reading, only the DB lookups below (already
+            # case-insensitive) see the original headword.
+            manglish_query = headword.lower()
+            ml_candidates = manglish_to_malayalam(manglish_query)
             if ml_candidates:
                 log_feature_event("varnam", request, query=headword)
             elif not already_confident:
                 # Fall back to local scheme-based candidates only when we have
                 # nothing else to show — they're a much weaker signal than
                 # Varnam and not worth surfacing as a mere suggestion.
-                ml_candidates = roman_to_malayalam_candidates(headword)
+                ml_candidates = roman_to_malayalam_candidates(manglish_query)
 
             # Varnam ranks candidates by its own priority, but not every ranked
             # spelling exists in our dictionaries. Validate with exact/lemma

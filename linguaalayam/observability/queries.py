@@ -180,3 +180,42 @@ def top_clients(
         .limit(limit)
     )
     return [(row.ip, row.country, row.count, bool(row.mostly_bot)) for row in session.execute(stmt)]
+
+
+def top_user_agents(
+    session: Session, since: datetime.datetime, limit: int = 10
+) -> list[tuple[str, int, bool]]:
+    """Return the most common User-Agent strings since a given timestamp.
+
+    Lets the dashboard show what's actually generating traffic (specific
+    crawler/bot names, MCP client SDKs, browsers) instead of just a bot/not-bot
+    flag on the client IP table.
+
+    Parameters
+    ----------
+    session : Session
+        SQLAlchemy session to use for the query.
+    since : datetime.datetime
+        Only count requests logged at or after this timestamp.
+    limit : int, optional
+        Maximum number of user agents to return, by default 10
+
+    Returns
+    -------
+    list[tuple[str, int, bool]]
+        ``(user_agent, request_count, is_bot)`` tuples, ordered by request count
+        descending. ``is_bot`` reflects whether the majority of that UA's
+        requests were flagged as automated.
+    """
+    stmt = (
+        select(
+            RequestLog.user_agent,
+            func.count().label("count"),
+            (func.count().filter(RequestLog.is_bot) * 2 > func.count()).label("mostly_bot"),
+        )
+        .where(RequestLog.timestamp >= since, RequestLog.user_agent.isnot(None))
+        .group_by(RequestLog.user_agent)
+        .order_by(desc("count"))
+        .limit(limit)
+    )
+    return [(row.user_agent, row.count, bool(row.mostly_bot)) for row in session.execute(stmt)]

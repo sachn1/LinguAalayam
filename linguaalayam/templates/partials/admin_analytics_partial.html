@@ -52,6 +52,24 @@
 </div>
 
 <div class="analytics-card">
+  <h2>Top user agents</h2>
+  <table class="analytics-table">
+    <thead><tr><th>User agent</th><th>Requests</th><th></th></tr></thead>
+    <tbody>
+      {% for user_agent, count, mostly_bot in user_agents %}
+      <tr>
+        <td class="ua-cell" title="{{ user_agent }}">{{ user_agent }}</td>
+        <td>{{ count }}</td>
+        <td>{% if mostly_bot %}<span class="bot-tag">BOT?</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">No requests in this window.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="analytics-card">
   <h2>Top clients</h2>
   <table class="analytics-table">
     <thead><tr><th>IP</th><th>Country</th><th>Requests</th><th></th></tr></thead>
