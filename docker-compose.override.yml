@@ -1,6 +1,9 @@
 services:
   app:
     build: .
+    volumes:
+      - ./linguaalayam/templates:/app/linguaalayam/templates:ro
+      - ./linguaalayam/static:/app/linguaalayam/static:ro
   db:
     ports:
       - "5432:5432"

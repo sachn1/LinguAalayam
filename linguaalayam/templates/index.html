@@ -3,6 +3,7 @@
 {% block content %}
 <div class="search-box">
   <div class="search-row">
+    {# Hidden lang select — value set from browser locale, used only by speech recognition #}
     <select id="lang" name="lang" style="display:none" aria-hidden="true">
       <option value="en-US"></option>
       <option value="ml-IN"></option>
@@ -18,42 +19,34 @@
       <option value="ta-IN"></option>
       <option value="bn-IN"></option>
     </select>
-    <div class="lang-dropdown" id="lang-dropdown">
-      <button class="lang-btn" id="lang-btn" type="button" aria-haspopup="listbox" title="Input language"></button>
-      <ul class="lang-options" id="lang-options" role="listbox">
-        <li role="option" data-value="en-US"><img src="https://flagcdn.com/16x12/us.png" width="16" height="12" alt=""> EN</li>
-        <li role="option" data-value="ml-IN"><img src="https://flagcdn.com/16x12/in.png" width="16" height="12" alt=""> മ</li>
-        <li role="option" data-value="de-DE"><img src="https://flagcdn.com/16x12/de.png" width="16" height="12" alt=""> DE</li>
-        <li role="option" data-value="fr-FR"><img src="https://flagcdn.com/16x12/fr.png" width="16" height="12" alt=""> FR</li>
-        <li role="option" data-value="ru-RU"><img src="https://flagcdn.com/16x12/ru.png" width="16" height="12" alt=""> RU</li>
-        <li role="option" data-value="es-ES"><img src="https://flagcdn.com/16x12/es.png" width="16" height="12" alt=""> ES</li>
-        <li role="option" data-value="pt-PT"><img src="https://flagcdn.com/16x12/pt.png" width="16" height="12" alt=""> PT</li>
-        <li role="option" data-value="zh-CN"><img src="https://flagcdn.com/16x12/cn.png" width="16" height="12" alt=""> 中文</li>
-        <li role="option" data-value="ar-SA"><img src="https://flagcdn.com/16x12/sa.png" width="16" height="12" alt=""> عر</li>
-        <li role="option" data-value="ur-PK"><img src="https://flagcdn.com/16x12/pk.png" width="16" height="12" alt=""> اردو</li>
-        <li role="option" data-value="hi-IN"><img src="https://flagcdn.com/16x12/in.png" width="16" height="12" alt=""> हि</li>
-        <li role="option" data-value="ta-IN"><img src="https://flagcdn.com/16x12/in.png" width="16" height="12" alt=""> தமி</li>
-        <li role="option" data-value="bn-IN"><img src="https://flagcdn.com/16x12/in.png" width="16" height="12" alt=""> বাং</li>
-      </ul>
-    </div>
-    <input
-      id="query"
-      type="text"
-      name="query"
-      placeholder="Type a word or a description… e.g. run, ഓടുക, feeling of joy"
-    data-i18n-placeholder="search_placeholder"
-      autofocus
-      autocomplete="off"
-      hx-get="/search"
-      hx-trigger="input delay:350ms, keyup[key=='Enter']"
-      hx-target="#results"
-      hx-include="#mode,#source,#lang"
-      hx-indicator="#spinner"
-    />
-    <div id="mic-group" style="display:none; flex-shrink:0; display:none; align-items:center;">
-      <button id="mic-btn" class="mic-btn" type="button" aria-label="Voice search">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-2 13.9A6 6 0 0 0 18 9h2a8 8 0 0 1-7 7.93V21h-2v-4.07A8 8 0 0 1 4 9h2a6 6 0 0 0 6 5.9z"/></svg>
-      </button>
+    <div class="search-input-wrap">
+      <input
+        id="query"
+        type="text"
+        name="query"
+        placeholder="Type a word… e.g. run, ഓടുക, oduka"
+        data-i18n-placeholder="search_placeholder"
+        autofocus
+        autocomplete="off"
+        hx-get="/search"
+        hx-trigger="input delay:350ms, keyup[key=='Enter']"
+        hx-target="#results"
+        hx-include="#source,#lang"
+        hx-indicator="#spinner"
+      />
+      {# Mic group (voice-search language picker + mic button) sits inside the
+         input wrapper, shown only when SpeechRecognition is available. The flag
+         button is grouped directly against the mic icon — not placed elsewhere
+         on the page — so it reads unambiguously as "language to speak in", not
+         a general input/interface language setting. #}
+      <div id="mic-group" class="mic-group" style="display:none">
+        <button id="mic-lang-btn" class="mic-lang-btn" type="button" aria-haspopup="listbox"
+                aria-label="Voice search language" title="Voice search language — tap to change" tabindex="-1">🇺🇸</button>
+        <ul id="mic-lang-options" class="mic-lang-options" role="listbox" aria-label="Voice search language"></ul>
+        <button id="mic-btn" class="mic-btn" type="button" aria-label="Voice search — tap and speak" title="Voice search — tap and speak">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-2 13.9A6 6 0 0 0 18 9h2a8 8 0 0 1-7 7.93V21h-2v-4.07A8 8 0 0 1 4 9h2a6 6 0 0 0 6 5.9z"/></svg>
+        </button>
+      </div>
     </div>
     <span id="spinner" class="htmx-indicator"><span class="spinner"></span></span>
   </div>
@@ -61,60 +54,120 @@
   <details class="advanced">
     <summary data-i18n="search_options">Search options</summary>
     <div class="advanced-row">
-      <select id="mode" name="mode"
-        hx-get="/search"
-        hx-trigger="change"
-        hx-target="#results"
-        hx-include="#query,#source,#lang"
-        hx-indicator="#spinner">
-        <option value="fuzzy" data-i18n="mode_fuzzy">Quick — similar spellings</option>
-        <option value="exact" data-i18n="mode_exact">Exact — precise match</option>
-        <option value="semantic" data-i18n="mode_semantic">Smart — search by meaning</option>
-      </select>
       <select id="source" name="source"
         hx-get="/search"
         hx-trigger="change"
         hx-target="#results"
-        hx-include="#query,#mode,#lang"
+        hx-include="#query,#lang"
         hx-indicator="#spinner">
         <option value="" data-i18n="source_all">All</option>
         <option value="olam_enml" data-i18n="source_olam">English → Malayalam</option>
-        <option value="ekkurup" data-i18n="source_ekkurup">Thesaurus</option>
-        <option value="datuk" data-i18n="source_datuk">Malayalam dictionary</option>
+        <optgroup label="Malayalam → Malayalam" data-i18n-label="source_group_mlml">
+          <option value="ml_ml" data-i18n="source_ml_ml">All Malayalam → Malayalam</option>
+          <option value="datuk" data-i18n="source_datuk">Datuk</option>
+          <option value="sayahna" data-i18n="source_sayahna">Sayahna</option>
+        </optgroup>
+        <optgroup label="Thesaurus" data-i18n-label="source_group_thesaurus">
+          <option value="ekkurup" data-i18n="source_ekkurup">Ekkurup</option>
+        </optgroup>
       </select>
     </div>
     <div class="mode-help">
-      <div class="mode-help-row">
-        <span class="mode-badge">Quick</span>
-        <span data-i18n-html="help_quick">Finds words with similar spelling. Works well for approximate matches and typos — <em>runing</em> finds <em>running</em>.</span>
-      </div>
-      <div class="mode-help-row">
-        <span class="mode-badge">Exact</span>
-        <span data-i18n-html="help_exact">Looks up the word exactly as typed (case-insensitive). Use when you know the precise spelling.</span>
-      </div>
-      <div class="mode-help-row">
-        <span class="mode-badge">Smart</span>
-        <span data-i18n-html="help_smart">Finds words by <em>meaning</em> — type a description or phrase: <em>"complete absence of sound"</em>, <em>"feeling of nostalgia"</em>, <em>"to move quickly on foot"</em>. No LLM key required for search. Add an <a href="/settings" style="color:var(--accent)">API key</a> to get a prose explanation instead of raw entries.</span>
-      </div>
       <div class="mode-help-row">
         <span class="mode-badge" data-i18n="source_olam">English → Malayalam</span>
         <span data-i18n-html="help_olam">Translate an English word to Malayalam. Uses the Olam dictionary.</span>
       </div>
       <div class="mode-help-row">
-        <span class="mode-badge" data-i18n="source_ekkurup">Thesaurus</span>
-        <span data-i18n-html="help_thesaurus">Find English synonyms and their Malayalam equivalents. Uses the Ekkurup thesaurus.</span>
+        <span class="mode-badge" data-i18n="source_ml_ml">Malayalam → Malayalam</span>
+        <span data-i18n-html="help_mlml">Look up a Malayalam word with its Malayalam definition. Searches both Datuk and Sayahna dictionaries.</span>
       </div>
       <div class="mode-help-row">
-        <span class="mode-badge" data-i18n="source_datuk">Malayalam dictionary</span>
-        <span data-i18n-html="help_datuk">Look up a Malayalam word with its Malayalam definition. Uses the Datuk dictionary.</span>
+        <span class="mode-badge" data-i18n="source_group_thesaurus">Thesaurus</span>
+        <span data-i18n-html="help_thesaurus">Find English synonyms and their Malayalam equivalents. Uses the Ekkurup thesaurus.</span>
       </div>
     </div>
   </details>
 </div>
 
+{# First-time voice-search onboarding — shown once, before the very first
+   recognition run, so a new user picks their speech language deliberately
+   instead of silently inheriting the browser locale. #}
+<div id="mic-lang-modal" class="mic-lang-modal-overlay" style="display:none">
+  <div class="mic-lang-modal" role="dialog" aria-modal="true" aria-labelledby="mic-lang-modal-title">
+    <button class="mic-lang-modal-close" id="mic-lang-modal-close" aria-label="Skip">✕</button>
+    <p class="mic-lang-modal-emoji">🎙️</p>
+    <h3 id="mic-lang-modal-title">Which language will you speak?</h3>
+    <p class="mic-lang-modal-hint">You can change this anytime from the flag next to the mic.</p>
+    <div class="mic-lang-modal-grid" id="mic-lang-modal-grid"></div>
+  </div>
+</div>
+
 <div id="results"></div>
 
 <style>
+  .search-input-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+  .search-input-wrap input[type="text"] {
+    width: 100%;
+    padding-right: 3.8rem; /* room for the language + mic button group */
+  }
+  .mic-group {
+    position: absolute;
+    right: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    padding: 0.1rem;
+  }
+  .mic-lang-btn {
+    position: relative;
+    background: none;
+    border: none;
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 0.25rem 0.3rem;
+    cursor: pointer;
+    border-radius: 999px;
+  }
+  .mic-lang-btn:hover { background: var(--bg); }
+  .mic-lang-options {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0;
+    z-index: 200;
+    min-width: 6rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  }
+  .mic-lang-options.open { display: block; }
+  .mic-lang-options li { padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.82rem; white-space: nowrap; }
+  .mic-lang-options li:hover { background: var(--bg); }
+  .mic-lang-options li.selected { color: var(--accent); font-weight: 600; }
+  .mic-btn {
+    background: none;
+    border: none;
+    padding: 0.3rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    line-height: 0;
+    border-radius: 999px;
+  }
+  .mic-btn:hover { color: var(--accent); }
+  .mic-btn.mic-active { color: #ef4444; animation: mic-pulse 1s ease-in-out infinite; }
   .mode-help { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .mode-help-row { display: flex; gap: 0.6rem; align-items: baseline; font-size: 0.75rem; color: var(--text-muted); }
   .mode-badge {
@@ -127,120 +180,126 @@
     font-weight: 600;
     color: var(--text);
   }
-  .lang-dropdown { position: relative; flex-shrink: 0; }
-  .lang-btn {
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 0.82rem;
-    padding: 0.15rem 0.4rem;
-    cursor: pointer;
-    white-space: nowrap;
-    line-height: 1.4;
+  .mic-lang-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 46, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    padding: 1rem;
   }
-  .lang-btn:hover { border-color: var(--accent); }
-  .lang-options {
-    display: none;
+  .mic-lang-modal {
+    position: relative;
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 1.75rem 1.5rem 1.5rem;
+    max-width: 320px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+  }
+  .mic-lang-modal-close {
     position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
+    top: 0.6rem;
+    right: 0.6rem;
+    background: none;
+    border: none;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.3rem;
+    line-height: 1;
+    border-radius: 999px;
+  }
+  .mic-lang-modal-close:hover { color: var(--text); background: var(--bg); }
+  .mic-lang-modal-emoji { font-size: 2rem; margin-bottom: 0.25rem; }
+  .mic-lang-modal h3 { font-size: 1rem; margin-bottom: 0.35rem; }
+  .mic-lang-modal-hint { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1.1rem; }
+  .mic-lang-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+  .mic-lang-modal-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    list-style: none;
-    margin: 0;
-    padding: 0.25rem 0;
-    z-index: 200;
-    min-width: 100%;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
-  }
-  .lang-options.open { display: block; }
-  .lang-options li {
-    padding: 0.35rem 0.75rem;
+    border-radius: 10px;
+    padding: 0.5rem 0.25rem;
     cursor: pointer;
-    font-size: 0.82rem;
-    white-space: nowrap;
+    font-family: inherit;
+    font-size: 0.75rem;
+    color: var(--text);
   }
-  .lang-options li:hover { background: var(--bg-alt, #f5f5f5); }
-  .lang-options li.selected { color: var(--accent); font-weight: 600; }
+  .mic-lang-modal-btn:hover { border-color: var(--accent); background: #fff8f0; }
+  .mic-lang-modal-btn .flag { font-size: 1.15rem; }
 </style>
 <script>
 (function () {
-  const CDN = 'https://flagcdn.com/16x12/';
-  function flag(cc) { return `<img src="${CDN}${cc}.png" width="16" height="12" alt="">`; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micGroup  = document.getElementById('mic-group');
+  const micBtn    = document.getElementById('mic-btn');
+  const langBtn   = document.getElementById('mic-lang-btn');
+  const langOpts  = document.getElementById('mic-lang-options');
+  const hiddenSel = document.getElementById('lang');
+  if (!SR || !micGroup || !micBtn || !langBtn || !langOpts || !hiddenSel) return;
+
   const LANGS = [
-    { value: 'en-US', html: `${flag('us')} EN` },
-    { value: 'ml-IN', html: `${flag('in')} മ` },
-    { value: 'de-DE', html: `${flag('de')} DE` },
-    { value: 'fr-FR', html: `${flag('fr')} FR` },
-    { value: 'ru-RU', html: `${flag('ru')} RU` },
-    { value: 'es-ES', html: `${flag('es')} ES` },
-    { value: 'pt-PT', html: `${flag('pt')} PT` },
-    { value: 'zh-CN', html: `${flag('cn')} 中文` },
-    { value: 'ar-SA', html: `${flag('sa')} عر` },
-    { value: 'ur-PK', html: `${flag('pk')} اردو` },
-    { value: 'hi-IN', html: `${flag('in')} हि` },
-    { value: 'ta-IN', html: `${flag('in')} தமி` },
-    { value: 'bn-IN', html: `${flag('in')} বাং` },
+    { value: 'en-US', flag: '🇺🇸', label: 'EN' },
+    { value: 'ml-IN', flag: '🇮🇳', label: 'മ' },
+    { value: 'de-DE', flag: '🇩🇪', label: 'DE' },
+    { value: 'fr-FR', flag: '🇫🇷', label: 'FR' },
+    { value: 'ru-RU', flag: '🇷🇺', label: 'RU' },
+    { value: 'es-ES', flag: '🇪🇸', label: 'ES' },
+    { value: 'pt-PT', flag: '🇵🇹', label: 'PT' },
+    { value: 'zh-CN', flag: '🇨🇳', label: '中文' },
+    { value: 'ar-SA', flag: '🇸🇦', label: 'عر' },
+    { value: 'ur-PK', flag: '🇵🇰', label: 'اردو' },
+    { value: 'hi-IN', flag: '🇮🇳', label: 'हि' },
+    { value: 'ta-IN', flag: '🇮🇳', label: 'தமி' },
+    { value: 'bn-IN', flag: '🇮🇳', label: 'বাং' },
   ];
 
-  const hiddenSel = document.getElementById('lang');
-  const langBtn  = document.getElementById('lang-btn');
-  const langOpts = document.getElementById('lang-options');
-  if (!hiddenSel || !langBtn || !langOpts) return;
+  langOpts.innerHTML = LANGS.map(l =>
+    `<li role="option" data-value="${l.value}">${l.flag} ${l.label}</li>`
+  ).join('');
 
-  function setLang(value) {
+  function setSpeechLang(value) {
     const entry = LANGS.find(l => l.value === value) || LANGS[0];
     hiddenSel.value = entry.value;
-    langBtn.innerHTML = entry.html;
+    langBtn.textContent = entry.flag;
+    langBtn.title = 'Voice search language: ' + entry.label + ' — tap to change';
     langOpts.querySelectorAll('li').forEach(li =>
       li.classList.toggle('selected', li.dataset.value === entry.value)
     );
     localStorage.setItem('speech_lang', entry.value);
   }
 
-  // Restore saved choice, defaulting to UI locale
-  const defaultLang = (localStorage.getItem('ui_locale') === 'ml') ? 'ml-IN' : 'en-US';
-  setLang(localStorage.getItem('speech_lang') || defaultLang);
+  setSpeechLang(localStorage.getItem('speech_lang') || navigator.language || 'en-US');
+  micGroup.style.display = 'flex';
 
-  langBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    langOpts.classList.toggle('open');
-  });
+  function isOnboarded() { return !!localStorage.getItem('mic_lang_onboarded'); }
 
   langOpts.querySelectorAll('li').forEach(function (li) {
     li.addEventListener('click', function () {
-      setLang(li.dataset.value);
+      setSpeechLang(li.dataset.value);
       langOpts.classList.remove('open');
-      // Re-run search immediately if the box already has a query
-      const q = document.getElementById('query');
-      if (q && q.value.trim()) htmx.trigger(q, 'input');
     });
   });
-
   document.addEventListener('click', function () { langOpts.classList.remove('open'); });
 
-  // Voice recognition — progressive enhancement, runs only if supported
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return;
-
-  const micGroup = document.getElementById('mic-group');
-  const micBtn   = document.getElementById('mic-btn');
-  if (!micGroup || !micBtn) return;
-
-  micGroup.style.display = 'flex';
-
   let recognition = null;
-
-  micBtn.addEventListener('click', function () {
-    if (recognition) { recognition.abort(); return; }
-
+  function startRecognition() {
+    trackClick('web_speech');
     recognition = new SR();
     recognition.lang = hiddenSel.value;
     recognition.continuous = false;
     recognition.interimResults = false;
-
     recognition.onstart  = () => micBtn.classList.add('mic-active');
     recognition.onend    = () => { micBtn.classList.remove('mic-active'); recognition = null; };
     recognition.onerror  = () => { micBtn.classList.remove('mic-active'); recognition = null; };
@@ -249,8 +308,67 @@
       input.value = e.results[0][0].transcript;
       htmx.trigger(input, 'input');
     };
-
     recognition.start();
+  }
+
+  // First-time onboarding modal — shown once, from whichever of the mic or
+  // flag button is clicked first, so a new user deliberately picks their
+  // speech language instead of silently inheriting the browser locale.
+  // Voice search only auto-starts afterwards if the mic itself was the
+  // trigger — clicking the flag first should just set a language, not
+  // unexpectedly start listening.
+  const modal     = document.getElementById('mic-lang-modal');
+  const modalGrid = document.getElementById('mic-lang-modal-grid');
+  const modalClose = document.getElementById('mic-lang-modal-close');
+  let modalOpenedFromMic = false;
+  let openLangModal = function () {};
+  let closeLangModal = function () {};
+
+  if (modal && modalGrid && modalClose) {
+    modalGrid.innerHTML = LANGS.map(l =>
+      `<button type="button" class="mic-lang-modal-btn" data-value="${l.value}">` +
+      `<span class="flag">${l.flag}</span><span>${l.label}</span></button>`
+    ).join('');
+
+    openLangModal = function (fromMic) {
+      modalOpenedFromMic = fromMic;
+      modal.style.display = 'flex';
+    };
+    closeLangModal = function () { modal.style.display = 'none'; };
+
+    modalClose.addEventListener('click', function () {
+      localStorage.setItem('mic_lang_onboarded', '1');
+      closeLangModal();
+    });
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) modalClose.click();
+    });
+    modalGrid.querySelectorAll('.mic-lang-modal-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setSpeechLang(btn.dataset.value);
+        localStorage.setItem('mic_lang_onboarded', '1');
+        closeLangModal();
+        if (modalOpenedFromMic) startRecognition();
+      });
+    });
+  }
+
+  langBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (modal && !isOnboarded()) {
+      openLangModal(false);
+      return;
+    }
+    langOpts.classList.toggle('open');
+  });
+
+  micBtn.addEventListener('click', function () {
+    if (recognition) { recognition.abort(); return; }
+    if (modal && !isOnboarded()) {
+      openLangModal(true);
+      return;
+    }
+    startRecognition();
   });
 })();
 </script>

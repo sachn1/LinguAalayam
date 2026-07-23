@@ -5,11 +5,28 @@
 </div>
 {% endif %}
 
-{% if results %}
-
-{# collect unique sources to detect multi-corpus results #}
-{% set ns = namespace(seen_sources=[]) %}
+{# filter out low-confidence non-exact, non-lemma results. lemma matches are
+   exempt from the score threshold because they're confirmed grammatically
+   related to the query (a shared mlmorph root), regardless of how far their
+   spelling has drifted from it — see rag/tools.py fuzzy_lookup/lemma_lookup.
+   Computed before the branch below so "no confident results" (raw results
+   non-empty but nothing clears the bar — e.g. weak spelling coincidences)
+   shows the same "no results" state as truly empty results, instead of a
+   confusing "0 results" heading with nothing under it. #}
+{% set MIN_SCORE = 0.55 %}
+{% set filtered = [] %}
 {% for r in results %}
+  {% if r.match_type == 'exact' or r.match_type == 'lemma' or r.score >= MIN_SCORE %}
+    {% set _ = filtered.append(r) %}
+  {% endif %}
+{% endfor %}
+
+{% if filtered %}
+
+{# group results by corpus in display order #}
+{% set corpus_order = ['olam_enml', 'datuk', 'sayahna', 'ekkurup'] %}
+{% set ns = namespace(seen_sources=[]) %}
+{% for r in filtered %}
   {% if r.source not in ns.seen_sources %}
     {% set ns.seen_sources = ns.seen_sources + [r.source] %}
   {% endif %}
@@ -20,13 +37,13 @@
 {% endif %}
 
 {% if query_morphology %}
-<p class="query-morph-tag"><span class="ml">{{ headword }}</span> — {{ query_morphology }} <a href="https://morph.smc.org.in/" target="_blank" class="morph-credit" title="Morphological analysis by mlmorph (SMC)">mlmorph ↗</a></p>
+<p class="query-morph-tag"><span class="ml">{{ headword }}</span> — {{ query_morphology }} <a href="https://morph.smc.org.in/" target="_blank" class="morph-credit" title="Morphological analysis by mlmorph (SMC)" onclick="trackClick('mlmorph')">mlmorph ↗</a></p>
 {% endif %}
 
 <div class="results-meta-row">
   <p class="results-meta">
-    {{ results | length }} result{% if results | length != 1 %}s{% endif %}
-    {% if headword and headword != query %} for <strong>{{ headword }}</strong>{% endif %}
+    {{ filtered | length }} result{% if filtered | length != 1 %}s{% endif %}
+    {% if headword and headword != query %} for <strong class="ml">{{ headword }}</strong>{% if varnam_used %} <a href="https://varnamproject.com" target="_blank" class="morph-credit" title="Manglish transliteration by Varnam (Subin Siby)">Varnam ↗</a>{% endif %}{% endif %}
     {% if ns.seen_sources | length > 1 %}
     &nbsp;·&nbsp; <span class="multi-corpus-note" title="The same word can appear from multiple corpora — each provides different information.">{{ ns.seen_sources | length }} corpora</span>
     {% endif %}
@@ -34,104 +51,164 @@
   {% set _rbtn_class = "romanise-btn active" if romanise else "romanise-btn" %}
   {% set _rbtn_arg = "true" if romanise else "false" %}
   {% set _rbtn_tip = "Hide romanisation" if romanise else "Show romanisation — Roman letters alongside Malayalam text" %}
-  <button class="{{ _rbtn_class }}" onclick="toggleRomanise({{ _rbtn_arg }})" data-tooltip="{{ _rbtn_tip }}">
+  <button class="{{ _rbtn_class }}" onclick="trackClick('ml2en'); toggleRomanise({{ _rbtn_arg }})" data-tooltip="{{ _rbtn_tip }}">
     A ↔ അ
   </button>
 </div>
 
-{% for r in results %}
-
-{# source display name and direction #}
-{% if r.source == 'olam_enml' %}
-  {% set source_label = 'Olam' %}
-  {% set source_dir = 'EN → ML' %}
-  {% set def_is_ml = true %}
-  {% set head_is_ml = false %}
-{% elif r.source == 'datuk' %}
-  {% set source_label = 'Datuk' %}
-  {% set source_dir = 'ML → ML' %}
-  {% set def_is_ml = true %}
-  {% set head_is_ml = true %}
-{% elif r.source == 'sayahna' %}
-  {% set source_label = 'Sayahna' %}
-  {% set source_dir = 'ML → ML' %}
-  {% set def_is_ml = true %}
-  {% set head_is_ml = true %}
-{% else %}
-  {% set source_label = 'Ekkurup' %}
-  {% set source_dir = 'EN thesaurus' %}
-  {% set def_is_ml = false %}
-  {% set head_is_ml = false %}
+{% if varnam_alternatives %}
+<p class="varnam-alt-note">Or did you mean
+  {% for word in varnam_alternatives %}
+  <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false" onclick="setSearchBox('{{ word }}')"
+     hx-vals='{"query": "{{ word }}", "source": "", "lang": "ml"}'>{{ word }}</a>{% if not loop.last %}, {% endif %}
+  {% endfor %}?
+</p>
 {% endif %}
 
-<div class="entry">
-  <div class="entry-header">
-    <span class="headword {% if head_is_ml %}ml{% endif %}">{{ r.headword }}{% if romanise and head_is_ml %} <span class="romanised romanised-head">{{ r.headword | romanise_ml }}</span>{% endif %}</span>
-    <span class="source-tag" title="{{ source_dir }}">{{ source_label }}</span>
-  </div>
-  {% if morphology and r.headword in morphology %}
-  <p class="morph-tag">{{ morphology[r.headword] }}</p>
-  {% endif %}
-  {% if r.source == 'sayahna' and 'ു്' in r.headword %}
-  <p class="archaic-note" title="This dictionary was written in 1917 and uses an older Malayalam script convention. The ending 'ു്' is an archaic word-boundary marker — you may see it written without this suffix in modern texts.">Archaic spelling (1917 orthography)</p>
+{% if manglish_suggestions %}
+<details class="manglish-suggestions">
+  <summary>Did you mean this in Malayalam?</summary>
+  <p class="varnam-alt-note">
+    {% for word in manglish_suggestions %}
+    <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false" onclick="setSearchBox('{{ word }}')"
+       hx-vals='{"query": "{{ word }}", "source": "", "lang": "ml"}'>{{ word }}</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+    <a href="https://varnamproject.com" target="_blank" class="morph-credit" title="Manglish transliteration by Varnam (Subin Siby)">Varnam ↗</a>
+  </p>
+</details>
+{% endif %}
+
+{# render results grouped by corpus #}
+{% for corpus in corpus_order %}
+  {% set corpus_results = filtered | selectattr('source', 'equalto', corpus) | list %}
+  {% if corpus_results %}
+
+  {% if corpus == 'olam_enml' %}
+    {% set group_label = 'English → Malayalam' %}
+  {% elif corpus == 'datuk' %}
+    {% set group_label = 'Malayalam → Malayalam' %}
+  {% elif corpus == 'sayahna' %}
+    {% set group_label = 'Shabdataaravali 1917' %}
+  {% else %}
+    {% set group_label = 'Thesaurus' %}
   {% endif %}
 
-  {# --- definitions (olam_enml, datuk) --- #}
-  {% if r.data.definitions %}
-    <dl class="defs">
-    {% set ns2 = namespace(last_pos=False) %}
-    {% for pair in r.data.definitions %}
-      {% set pos = pair[0] %}
-      {% set text = pair[1] %}
-      {% if pos != ns2.last_pos %}
-        {% if ns2.last_pos is not sameas false %}</dd>{% endif %}
+  {% if ns.seen_sources | length > 1 %}
+  <p class="corpus-group-label">{{ group_label }}</p>
+  {% endif %}
+
+  {% for r in corpus_results %}
+
+  {% if r.source == 'olam_enml' %}
+    {% set source_label = 'Olam' %}
+    {% set source_dir = 'EN → ML' %}
+    {% set def_is_ml = true %}
+    {% set head_is_ml = false %}
+  {% elif r.source == 'datuk' %}
+    {% set source_label = 'Datuk' %}
+    {% set source_dir = 'ML → ML' %}
+    {% set def_is_ml = true %}
+    {% set head_is_ml = true %}
+  {% elif r.source == 'sayahna' %}
+    {% set source_label = 'Shabdataaravali 1917' %}
+    {% set source_dir = 'ML → ML' %}
+    {% set def_is_ml = true %}
+    {% set head_is_ml = true %}
+  {% else %}
+    {% set source_label = 'Ekkurup' %}
+    {% set source_dir = 'EN thesaurus' %}
+    {% set def_is_ml = false %}
+    {% set head_is_ml = false %}
+  {% endif %}
+
+  <div class="entry">
+    <div class="entry-header">
+      <span class="headword {% if head_is_ml %}ml{% endif %}">{{ r.headword }}{% if romanise and head_is_ml %} <span class="romanised romanised-head">{{ r.headword | romanise_ml }}</span>{% endif %}</span>
+      {% if head_is_ml %}
+      <button class="trace-btn" type="button" data-trace-word="{{ r.headword.split(',')[0].strip() }}" onclick="trackClick('jayasree'); traceWord(this, this.dataset.traceWord)" aria-label="Trace handwriting" data-tooltip="Watch this word written stroke by stroke">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+      </button>
+      {% endif %}
+      {% if r.match_type == 'lemma' %}
+      <span class="lemma-tag" title="Identified by morphological analysis as a grammatical form of your search term — not just a similar spelling">↳ related form</span>
+      {% endif %}
+      <span class="source-tag" title="{{ source_dir }}">{{ source_label }}</span>
+    </div>
+    {% if r.data.morphology %}
+    <p class="morph-tag">{{ r.data.morphology | join(' / ') }}</p>
+    {% endif %}
+    {% if r.source == 'sayahna' and 'ു്' in r.headword %}
+    <p class="archaic-note" title="This dictionary was written in 1917 and uses an older Malayalam script convention. The ending 'ു്' is an archaic word-boundary marker — you may see it written without this suffix in modern texts.">Archaic spelling (1917 orthography)</p>
+    {% endif %}
+    <div class="trace-stage" hidden></div>
+
+    {# --- definitions (olam_enml, datuk, sayahna) — POS-grouped --- #}
+    {% if r.data.definitions %}
+      <dl class="defs">
+      {% for pos, texts in r.data.definitions | group_definitions %}
         <dt>{{ pos if pos else '—' }}</dt>
         <dd>
-          <span class="{% if def_is_ml %}ml{% endif %}">{{ text }}</span>
-          {% if romanise and def_is_ml %}<span class="romanised">{{ text | romanise_ml }}</span>{% endif %}
-        {% set ns2.last_pos = pos %}
-      {% else %}
-        <span class="def-sep">,</span> <span class="{% if def_is_ml %}ml{% endif %}">{{ text }}</span>
-        {% if romanise and def_is_ml %}<span class="romanised">{{ text | romanise_ml }}</span>{% endif %}
-      {% endif %}
-    {% endfor %}
-    {% if r.data.definitions %}</dd>{% endif %}
-    </dl>
-
-  {# --- explanations (sayahna supplementary notes) --- #}
-  {% if r.data.explanations %}
-    <ul class="explanations">
-    {% for note in r.data.explanations %}
-      <li class="ml">{{ note }}{% if romanise %} <span class="romanised">{{ note | romanise_ml }}</span>{% endif %}</li>
-    {% endfor %}
-    </ul>
-  {% endif %}
-
-  {# --- senses (ekkurup thesaurus) --- #}
-  {% elif r.data.senses %}
-    <dl class="defs">
-    {% for sense in r.data.senses %}
-      <dt>{{ sense.pos if sense.pos else '—' }}</dt>
-      <dd>
-        {% for group in sense.en %}
-          <span class="sense-group">{{ group | join(', ') }}</span>
-        {% endfor %}
-        {% if sense.ml %}
-          <span class="sense-arrow">→</span>
-          {% for group in sense.ml %}
-            <span class="ml">{{ group | join(', ') }}</span>
-            {% if romanise %}<span class="romanised">{{ group | join(', ') | romanise_ml }}</span>{% endif %}
+          {% for text in texts %}
+            {% if def_is_ml and headword_set is defined %}
+              {% for token in text.split(', ') %}
+                {% set word = token.strip() %}
+                {% if word and word in headword_set and word != r.headword %}
+                  <a class="def-link ml" hx-get="/search" hx-target="#results" hx-push-url="false" onclick="setSearchBox('{{ word }}')"
+                     hx-vals='{"query": "{{ word }}", "source": "", "lang": "ml"}'>{{ word }}</a>
+                {% else %}
+                  <span class="{% if def_is_ml %}ml{% endif %}">{{ word }}</span>
+                {% endif %}
+                {% if not loop.last %}<span class="def-sep">, </span>{% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="{% if def_is_ml %}ml{% endif %}">{{ text }}</span>
+            {% endif %}
+            {% if romanise and def_is_ml %}<span class="romanised">{{ text | romanise_ml }}</span>{% endif %}
+            {% if not loop.last %}<span class="def-sep"> · </span>{% endif %}
           {% endfor %}
-        {% endif %}
-      </dd>
-    {% endfor %}
-    </dl>
-  {% endif %}
+        </dd>
+      {% endfor %}
+      </dl>
 
-  {% if r.match_type != 'exact' %}
-  <p class="score">{{ (r.score * 100) | round | int }}% <span data-i18n="score_match">match</span></p>
+      {% if r.data.explanations %}
+      <ul class="explanations">
+      {% for note in r.data.explanations %}
+        <li class="ml">{{ note }}{% if romanise %} <span class="romanised">{{ note | romanise_ml }}</span>{% endif %}</li>
+      {% endfor %}
+      </ul>
+      {% endif %}
+
+    {# --- senses (ekkurup thesaurus) — first 2 senses shown, rest collapsed --- #}
+    {% elif r.data.senses %}
+      {% set sense_id = 'ek-' ~ loop.index0 ~ '-' ~ r.headword | replace(' ', '_') %}
+      <button class="show-more-btn" onclick="toggleSenses(this, '{{ sense_id }}')">
+        {{ r.data.senses | length }} sense{% if r.data.senses | length != 1 %}s{% endif %} — expand
+      </button>
+      <dl class="defs senses-extra" id="{{ sense_id }}" style="display:none">
+      {% for sense in r.data.senses %}
+        <dt>{{ sense.pos if sense.pos else '—' }}</dt>
+        <dd>
+          {% for group in sense.en %}
+            <span class="sense-group">{{ group | join(', ') }}</span>
+          {% endfor %}
+          {% if sense.ml %}
+            <span class="sense-arrow">→</span>
+            {% for group in sense.ml %}
+              <span class="ml">{{ group | join(', ') }}</span>
+              {% if romanise %}<span class="romanised">{{ group | join(', ') | romanise_ml }}</span>{% endif %}
+            {% endfor %}
+          {% endif %}
+        </dd>
+      {% endfor %}
+      </dl>
+    {% endif %}
+
+    {% if r.match_type != 'exact' %}
+    <p class="score">{{ (r.score * 100) | round | int }}% <span data-i18n="score_match">match</span></p>
+    {% endif %}
+  </div>
+  {% endfor %}
   {% endif %}
-</div>
 {% endfor %}
 
 {% elif query %}
@@ -139,105 +216,169 @@
 {% endif %}
 
 <style>
-  .answer-card {
-    background: #fffbeb;
-    border: 1px solid #fde68a;
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
-    font-size: 0.95rem;
-    line-height: 1.6;
-  }
+  .answer-card { background: #fffbeb; border: 1px solid #fde68a; border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.6; }
   .answer-label { font-size: 0.7rem; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
-
   .results-meta { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem; }
   .multi-corpus-note { cursor: help; border-bottom: 1px dashed var(--border); }
-
-  .entry {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-bottom: 0.75rem;
-  }
-  .entry-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 0.6rem;
-    gap: 0.5rem;
-  }
+  .corpus-group-label { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 1.25rem 0 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid var(--border); }
+  .entry { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
+  .entry-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; gap: 0.5rem; }
   .headword { font-size: 1.15rem; font-weight: 700; }
-  .source-tag {
-    font-size: 0.7rem;
-    padding: 0.15rem 0.5rem;
-    border-radius: 99px;
-    background: #f5f0eb;
-    color: var(--accent);
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-
+  .lemma-tag { flex-shrink: 0; font-size: 0.68rem; font-weight: 600; color: var(--accent); background: #f0ecfa; border-radius: 99px; padding: 0.15rem 0.55rem; cursor: help; white-space: nowrap; }
+  .source-tag { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 99px; background: #f5f0eb; color: var(--accent); font-weight: 600; flex-shrink: 0; }
   dl.defs { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; align-items: baseline; }
-  dl.defs dt {
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding-top: 0.15rem;
-    white-space: nowrap;
-  }
+  dl.defs dt { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; padding-top: 0.15rem; white-space: nowrap; }
   dl.defs dd { font-size: 0.9rem; line-height: 1.5; margin: 0; color: var(--text); }
   .def-sep { color: var(--text-muted); }
   .sense-group { color: var(--text-muted); }
   .sense-arrow { margin: 0 0.3rem; color: var(--text-muted); }
-
+  .def-link { color: var(--accent); text-decoration: none; cursor: pointer; border-bottom: 1px dotted var(--accent); }
+  .def-link:hover { border-bottom-style: solid; }
+  .show-more-btn { background: none; border: none; color: var(--accent); font-size: 0.78rem; cursor: pointer; padding: 0.3rem 0; font-family: inherit; margin-top: 0.3rem; display: block; }
+  .show-more-btn:hover { text-decoration: underline; }
   .score { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; }
-
   .romanised { font-size: 0.78rem; color: var(--text-muted); font-style: italic; margin-left: 0.35rem; }
   .romanised-head { font-size: 0.85rem; font-weight: 400; }
-
   .results-meta-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 1rem; gap: 0.5rem; }
   .results-meta-row .results-meta { margin-bottom: 0; }
-  .romanise-btn {
-    flex-shrink: 0;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 0.72rem;
-    font-family: inherit;
-    padding: 0.2rem 0.6rem;
-    cursor: pointer;
-    color: var(--text-muted);
-    white-space: nowrap;
-  }
-  .romanise-btn { position: relative; }
-  .romanise-btn::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
-    background: var(--text);
-    color: var(--surface);
-    font-size: 0.7rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
-    z-index: 10;
-  }
+  .romanise-btn { flex-shrink: 0; background: none; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.72rem; font-family: inherit; padding: 0.2rem 0.6rem; cursor: pointer; color: var(--text-muted); white-space: nowrap; position: relative; }
+  .romanise-btn::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px); right: 0; background: var(--text); color: var(--surface); font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 4px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 10; }
   .romanise-btn:hover::after { opacity: 1; }
   .romanise-btn:hover { border-color: var(--accent); color: var(--accent); }
   .romanise-btn.active { border-color: var(--accent); color: var(--accent); background: #fff8f0; }
-
   .empty { text-align: center; padding: 3rem 1rem; color: var(--text-muted); }
   .morph-tag { font-size: 0.68rem; color: var(--accent); font-style: italic; margin-bottom: 0.35rem; }
   .archaic-note { font-size: 0.68rem; color: var(--text-muted); font-style: italic; margin-bottom: 0.35rem; cursor: help; border-bottom: 1px dashed var(--border); display: inline-block; }
   .query-morph-tag { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.6rem; font-style: italic; }
   .translation-note { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.4rem; font-style: italic; }
+  .varnam-alt-note { font-size: 0.8rem; color: var(--text-muted); margin: -0.3rem 0 0.8rem; }
+  .varnam-alt-note .def-link { margin: 0 0.15rem; }
+  .manglish-suggestions { margin: -0.3rem 0 0.8rem; }
+  .manglish-suggestions summary {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    width: fit-content;
+  }
+  .manglish-suggestions summary:hover { color: var(--accent); }
+  .manglish-suggestions .varnam-alt-note { margin: 0.4rem 0 0; }
   .morph-credit { font-style: normal; font-size: 0.7rem; opacity: 0.6; color: inherit; margin-left: 0.4rem; text-decoration: none; }
   .morph-credit:hover { opacity: 1; text-decoration: underline; }
+  ul.explanations { margin: 0.4rem 0 0; padding-left: 1.2rem; font-size: 0.9rem; }
+  ul.explanations li { margin-bottom: 0.2rem; color: var(--text); }
+  .trace-btn { flex-shrink: 0; background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.2rem 0.4rem; cursor: pointer; color: var(--text-muted); display: inline-flex; align-items: center; position: relative; }
+  .trace-btn::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--text); color: var(--surface); font-size: 0.7rem; padding: 0.25rem 0.5rem; border-radius: 4px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 10; }
+  .trace-btn:hover::after { opacity: 1; }
+  .trace-btn:hover, .trace-btn.active { border-color: var(--accent); color: var(--accent); }
+  .trace-stage { margin-top: 0.6rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: #fafafa; }
+  .trace-stage[hidden] { display: none; }
+  .trace-controls { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .speed-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--text-muted); }
+  .speed-slider { width: 80px; height: 4px; cursor: pointer; accent-color: var(--accent); }
+  .speed-value { font-size: 0.72rem; min-width: 2em; color: var(--text-muted); }
+  .replay-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.15rem 0.45rem; cursor: pointer; font-size: 0.85rem; color: var(--text-muted); line-height: 1; }
+  .replay-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .trace-stage-error { font-size: 0.8rem; color: var(--text-muted); }
+  .trace-loading { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
+  .trace-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .trace-credit { display: block; font-size: 0.68rem; opacity: 0.6; margin-top: 0.4rem; text-decoration: none; color: inherit; }
+  .trace-credit:hover { opacity: 1; text-decoration: underline; }
 </style>
+
+<script>
+function toggleSenses(btn, id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const hidden = el.style.display === 'none';
+  el.style.display = hidden ? '' : 'none';
+  const count = el.querySelectorAll('dt').length;
+  btn.textContent = hidden
+    ? 'Show less'
+    : count + ' sense' + (count !== 1 ? 's' : '') + ' — expand';
+}
+
+// Lazy-loaded once per page — jayasree's glyph/stroke data is ~11.6MB, only
+// fetched the first time someone actually clicks a trace button.
+let _jayasreeModule = null;
+function loadJayasree() {
+  if (!_jayasreeModule) {
+    if (!document.getElementById('jayasree-style')) {
+      const link = document.createElement('link');
+      link.id = 'jayasree-style';
+      link.rel = 'stylesheet';
+      link.href = '/static/vendor/jayasree/style.css';
+      document.head.appendChild(link);
+    }
+    _jayasreeModule = import('/static/vendor/jayasree/index.js');
+  }
+  return _jayasreeModule;
+}
+
+async function traceWord(btn, word) {
+  const entry = btn.closest('.entry');
+  const stage = entry.querySelector('.trace-stage');
+  const active = btn.classList.contains('active');
+
+  if (active) {
+    btn.classList.remove('active');
+    stage.hidden = true;
+    stage._writer?.cancel();
+    return;
+  }
+
+  btn.classList.add('active');
+  stage.hidden = false;
+
+  if (stage._writer) {
+    const slider = stage.querySelector('.speed-slider');
+    stage._writer.play(word, { speed: parseFloat(slider.value) });
+    return;
+  }
+
+  // Guards against a second click landing here while the first click's
+  // fetch of jayasree's ~11.6MB data is still in flight — without this,
+  // the second call would tear down the DOM the first call is about to
+  // build into partway through.
+  if (stage.dataset.loading) return;
+  stage.dataset.loading = '1';
+
+  stage.innerHTML = '<div class="trace-loading"><span class="trace-spinner"></span> Loading handwriting data…</div>';
+  try {
+    const { createStrokeWriter } = await loadJayasree();
+    stage.innerHTML = '';
+    const controls = document.createElement('div');
+    controls.className = 'trace-controls';
+    controls.innerHTML = '<label class="speed-label">Speed <input type="range" class="speed-slider" min="0.25" max="3" step="0.25" value="1"> <span class="speed-value">1\u00d7</span></label> <button class="replay-btn" type="button" title="Replay">\u21bb</button>';
+    stage.appendChild(controls);
+    const slider = controls.querySelector('.speed-slider');
+    const speedVal = controls.querySelector('.speed-value');
+    slider.addEventListener('input', () => { speedVal.textContent = slider.value + '×'; });
+    const writerContainer = document.createElement('div');
+    writerContainer.className = 'trace-writer';
+    stage.appendChild(writerContainer);
+    const writer = createStrokeWriter(writerContainer);
+    await writer.load();
+    await writer.loadStrokes();
+    controls.querySelector('.replay-btn').addEventListener('click', () => {
+      writer.play(word, { speed: parseFloat(slider.value) });
+    });
+    const credit = document.createElement('a');
+    credit.href = 'https://github.com/sachn1/jayasree';
+    credit.target = '_blank';
+    credit.className = 'trace-credit';
+    credit.title = 'Handwriting animation by jayasree';
+    credit.textContent = 'jayasree ↗';
+    stage.appendChild(credit);
+    stage._writer = writer;
+    stage._word = word;
+    await writer.play(word, { speed: parseFloat(slider.value) });
+  } catch (err) {
+    stage.innerHTML = '<p class="trace-stage-error">Couldn\'t load the trace animation.</p>';
+    console.error('jayasree trace failed', err);
+  } finally {
+    delete stage.dataset.loading;
+  }
+}
+</script>

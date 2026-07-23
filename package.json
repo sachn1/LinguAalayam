@@ -1,0 +1,11 @@
+{
+  "name": "linguaalayam-frontend-deps",
+  "private": true,
+  "description": "Pins jayasree's version for `make sync-jayasree`. No bundler — linguaalayam serves plain JS/CSS from static/, this is only used to vendor jayasree's runtime files at build time.",
+  "devDependencies": {
+    "jayasree": "0.4.0"
+  },
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

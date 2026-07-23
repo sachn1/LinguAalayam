@@ -1,41 +1,37 @@
 """Data models for dictionary entries from various sources."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 
+def _compute_morphology(headword: str) -> list[str] | None:
+    """Return mlmorph analysis labels for *headword*, or ``None`` if unavailable.
+
+    Called once at parse/ingest time so results are stored in ``data`` JSONB
+    and never recomputed at query time.
+    """
+    try:
+        from linguaalayam.transliteration.morphology import analyse_word
+
+        return analyse_word(headword.split(",")[0].strip() if "," in headword else headword)
+    except Exception:
+        return None
+
+
 @runtime_checkable
 class Embeddable(Protocol):
-    """Protocol for entries that can be embedded into a vector space.
-
-    Any object satisfying this protocol can be passed to
-    :class:`~linguaalayam.embeddings.service.EmbeddingService` and stored
-    in the database via :func:`~linguaalayam.database.queries.batch_insert`.
-
-    Attributes
-    ----------
-    source : str
-        Identifier for the originating corpus (e.g. ``"olam_enml"``).
-    headword : str
-        The primary lookup key for the entry.
-    """
+    """Protocol for entries that can be embedded into a vector space."""
 
     source: str
     headword: str
 
-    def to_embed_text(self) -> str:
-        """Convert the entry to a text representation suitable for embedding.
-
-        Returns
-        -------
-        str
-            Text representation of the entry.
-        """
-        ...
+    def to_embed_text(self) -> str: ...
 
 
 def _definition_embed_text(headword: str, definitions: list[tuple[str | None, str]]) -> str:
-    """Shared embed-text format for definition-based entry types (OlamEntry, DatukEntry)."""
+    """Shared embed-text format for definition-based entry types."""
     by_pos: dict[str, list[str]] = {}
     for pos, defn in definitions:
         by_pos.setdefault(pos or "general", []).append(defn)
@@ -55,14 +51,16 @@ class OlamEntry:
         The English word or phrase being defined.
     definitions : list[tuple[str | None, str]]
         Ordered list of ``(part-of-speech, Malayalam definition)`` pairs.
-        POS is ``None`` when the source does not specify one.
     source : str
         Corpus identifier; defaults to ``"olam_enml"``.
+    morphology : None
+        Always ``None`` — mlmorph does not process English headwords.
     """
 
     headword: str
-    definitions: list[tuple[str | None, str]]  # [(pos, definition), ...]
+    definitions: list[tuple[str | None, str]]
     source: str = "olam_enml"
+    morphology: list[str] | None = field(init=False, default=None)
 
     def to_embed_text(self) -> str:
         """Convert to embed-text format grouping definitions by part of speech."""
@@ -79,14 +77,20 @@ class DatukEntry:
         The Malayalam word being defined.
     definitions : list[tuple[str | None, str]]
         Ordered list of ``(part-of-speech, Malayalam definition)`` pairs.
-        POS is ``None`` when the source does not specify one.
     source : str
         Corpus identifier; defaults to ``"datuk"``.
+    morphology : list[str] or None
+        mlmorph analysis labels, computed at ingest time.
     """
 
     headword: str
-    definitions: list[tuple[str | None, str]]  # [(pos, definition), ...]
+    definitions: list[tuple[str | None, str]]
     source: str = "datuk"
+    morphology: list[str] | None = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Compute morphology at ingest time via mlmorph."""
+        self.morphology = _compute_morphology(self.headword)
 
     def to_embed_text(self) -> str:
         """Convert to embed-text format grouping definitions by part of speech."""
@@ -95,25 +99,31 @@ class DatukEntry:
 
 @dataclass
 class SayahnaEntry:
-    """Malayalam–Malayalam dictionary entry from the Sayahna Shabdataaravali corpus.
+    """Malayalam–Malayalam dictionary entry from the Sayahna Shabdataaravali corpus (1917).
 
     Attributes
     ----------
     headword : str
         The Malayalam word being defined.
     definitions : list[tuple[str | None, str]]
-        Ordered list of ``(part-of-speech, definition)`` pairs from ``<deftext>`` elements.
-        POS is ``None`` when no ``<gr>`` tag is present.
+        Ordered list of ``(part-of-speech, definition)`` pairs.
     explanations : list[str]
         Supplementary notes from ``<expl>`` elements.
     source : str
         Corpus identifier; defaults to ``"sayahna"``.
+    morphology : list[str] or None
+        mlmorph analysis labels, computed at ingest time.
     """
 
     headword: str
     definitions: list[tuple[str | None, str]]
     explanations: list[str] = field(default_factory=list)
     source: str = "sayahna"
+    morphology: list[str] | None = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Compute morphology at ingest time via mlmorph."""
+        self.morphology = _compute_morphology(self.headword)
 
     def to_embed_text(self) -> str:
         """Convert to embed-text format with definitions grouped by POS and appended notes."""
@@ -125,24 +135,11 @@ class SayahnaEntry:
 
 @dataclass
 class EkkurupSense:
-    """One sense (POS cluster) within an Ekkurup thesaurus entry.
-
-    Attributes
-    ----------
-    pos : str or None
-        Part-of-speech label (e.g. ``"verb"``, ``"noun"``, ``"idiom"``).
-        ``None`` when the source omits a POS tag.
-    en : list[list[str]]
-        Grouped English synonym clusters. Each inner list is a set of
-        near-synonymous English words for this sense.
-    ml : list[list[str]]
-        Grouped Malayalam translation clusters. Each inner list corresponds
-        to the matching ``en`` cluster.
-    """
+    """One sense (POS cluster) within an Ekkurup thesaurus entry."""
 
     pos: str | None
-    en: list[list[str]] = field(default_factory=list)  # grouped English synonym clusters
-    ml: list[list[str]] = field(default_factory=list)  # grouped Malayalam translation clusters
+    en: list[list[str]] = field(default_factory=list)
+    ml: list[list[str]] = field(default_factory=list)
 
 
 @dataclass
@@ -154,18 +151,20 @@ class EkkurupEntry:
     headword : str
         The English word or phrase.
     senses : list[EkkurupSense]
-        All sense clusters for this headword, each with its own POS,
-        English synonyms, and Malayalam translations.
+        All sense clusters for this headword.
     source : str
         Corpus identifier; defaults to ``"ekkurup"``.
+    morphology : None
+        Always ``None`` — English headwords are not analysed by mlmorph.
     """
 
     headword: str
     senses: list[EkkurupSense]
     source: str = "ekkurup"
+    morphology: list[str] | None = field(init=False, default=None)
 
     def to_embed_text(self) -> str:
-        """Convert input to text representation specific for Ekkurup."""
+        """Convert to embed-text format with EN and ML synonym clusters per sense."""
         lines = [f"word: {self.headword}"]
         for sense in self.senses:
             pos_tag = f"[{sense.pos}]" if sense.pos else "[general]"

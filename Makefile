@@ -1,4 +1,4 @@
-.PHONY: install install-local check lint format test ingest ingest-debug rag mcp
+.PHONY: install install-local check lint format test ingest ingest-debug rag mcp sync-jayasree
 
 # Standard install (CPU torch — matches CI and production)
 install:
@@ -14,7 +14,7 @@ install-local: install
 	fi
 
 check:
-	poetry run pre-commit run --all-files
+	PRE_COMMIT_NO_CONCURRENCY=1 poetry run pre-commit run --all-files
 	poetry run pytest --cov=linguaalayam --cov-fail-under=80
 
 lint:
@@ -35,6 +35,13 @@ ingest-debug:
 
 rag:
 	poetry run rag 'rag.query=$(QUERY)' llm=nollm
+
+# Vendors jayasree's runtime files (handwriting-trace widget) from npm into
+# static/ — no bundler, just a build-time copy. Re-run after bumping the
+# version in package.json.
+sync-jayasree:
+	npm install
+	bash scripts/sync_jayasree.sh
 
 mcp:
 	poetry run mcp-server

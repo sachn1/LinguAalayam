@@ -105,6 +105,8 @@ user query
 | `linguaalayam/rag/tools.py` | `DictionaryTools` — exact, fuzzy, semantic lookup over a live DB session |
 | `linguaalayam/mcp/server.py` | FastMCP server — three tools + `dictionary://{headword}` resource |
 | `linguaalayam/scripts/ingest.py` | Ingestion entry point with checkpoint-based resumability |
+| `linguaalayam/observability/` | Traffic/usage analytics — `RequestLog` ORM model, `RequestLoggingMiddleware` (ASGI, logs every request except `/admin`, `/health`, `/track/click`), `log_feature_event()` for non-request analytics events (e.g. Varnam manglish fallback), query helpers (`traffic_by_route_type`, `top_queries`, `top_clients`, `top_outbound_clicks`) |
+| `linguaalayam/api/admin.py` | `/admin/analytics` dashboard (HTMX-polling) + JSON partial, gated by HTTP Basic Auth (`ADMIN_USER`/`ADMIN_PASSWORD`) |
 
 ### Configuration (Hydra)
 
@@ -138,6 +140,8 @@ Unit tests use an SQLite in-memory database via the `db_cfg` fixture — no runn
 ## Environment
 
 Requires a `.env` file with: `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`, `DB_NAME`. Set `DB_SSLMODE=require` for hosted Postgres.
+
+Also: `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` (optional, only for their respective `llm=` configs), `MCP_ISSUER_URL` (public URL where `/mcp` is reachable, drives OAuth discovery), `ADMIN_USER`/`ADMIN_PASSWORD` (HTTP Basic Auth for `/admin/analytics`). See `.env.example` for the full list.
 
 ## Versioning
 

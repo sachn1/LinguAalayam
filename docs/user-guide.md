@@ -1,85 +1,76 @@
 # User Guide
 
-LinguAalayam is a Malayalam dictionary search engine. Search by word, by approximate spelling, or by meaning — in English or Malayalam.
+LinguAalayam is a Malayalam dictionary that searches across four open corpora — in English, Malayalam, or Manglish.
 
 **Live at [linguaalayam.org](https://linguaalayam.org)**
 
 ---
 
-## Search modes
+## How search works
 
-### Quick (default)
-Finds words with similar spelling using trigram similarity. Good for:
-- Approximate matches: *runing* → *running*
-- Partial words: *ephem* → *ephemeral*
-- When you're unsure of spelling
+Type a word in the search bar and results appear automatically. There is no mode to switch — the search engine finds the best matches using trigram similarity, which naturally ranks exact matches at the top followed by close variants.
 
-### Exact
-Case-insensitive exact headword match. Returns every dictionary entry whose headword matches precisely.
-Use when you know the exact spelling: *run*, *ഓടുക*, *ephemeral*.
+- Type **English** to find Malayalam definitions: *run*, *happiness*, *ephemeral*
+- Type **Malayalam** to find definitions in any direction: *ഓടുക*, *സന്തോഷം*
+- Type **Manglish** (romanised Malayalam) to find Malayalam results: *oduka*, *santhosham*, *veedu*
+- Type a **description or phrase** to find the word: *feeling of nostalgia*, *complete absence of sound*
 
-### Smart
-Searches by **meaning** using multilingual sentence embeddings. No API key required — this runs on our server.
+---
 
-Type a description, phrase, or concept:
-- *"complete absence of sound"* → finds *silence*, *quiet*, *ശബ്ദമില്ലാത്ത*
-- *"feeling of nostalgia"* → finds *longing*, *wistfulness*
-- *"to move quickly on foot"* → finds *run*, *sprint*, *ഓടുക*
-- *"what does ephemeral mean"* → finds *ephemeral* and related words
+## Voice search
 
-Smart mode works regardless of whether you have an API key. The LLM key only changes **how the results are presented** — without a key you get the raw entries; with a key you get a prose explanation.
+On browsers that support speech recognition (Chrome, Edge, Safari), a microphone icon appears inside the search bar. Tap it, speak, and the transcribed text is searched automatically. The first time you use it, a short prompt asks which language you'll be speaking — your choice is remembered after that. You can change it anytime via the flag icon next to the mic, which stays visibly grouped with it so it's clear it controls the *voice* language, not the interface or search language.
 
 ---
 
 ## Corpora (source filter)
 
-LinguAalayam searches four open Malayalam corpora. Leave the filter on **All corpora** to search all at once.
+LinguAalayam searches four open Malayalam corpora. Leave the filter on **All** to search everything at once.
 
-| Corpus | Filter label | Direction | Best for |
+| Filter | Corpora | Direction | Best for |
 |---|---|---|---|
-| **Olam** | English → Malayalam | EN → ML | Translating an English word to Malayalam |
-| **Datuk** | Malayalam dictionary | ML → ML | Understanding a Malayalam word in depth |
-| **Shabdataaravali** | Malayalam dictionary | ML → ML | Classical definitions from the 1917 authoritative dictionary |
-| **Ekkurup** | Thesaurus | EN thesaurus | Finding synonyms and Malayalam equivalents for an English concept |
+| **All** | All four | — | General search |
+| **English → Malayalam** | Olam | EN → ML | Translating an English word |
+| **All Malayalam → Malayalam** | Datuk + Sayahna | ML → ML | Understanding a Malayalam word |
+| **Datuk** | Datuk | ML → ML | Contemporary Malayalam definitions |
+| **Sayahna** | Shabdataaravali (1917) | ML → ML | Classical/archaic Malayalam |
+| **Thesaurus → Ekkurup** | Ekkurup | EN thesaurus | English synonyms with Malayalam equivalents |
 
-Datuk and Shabdataaravali are searched together under the **Malayalam dictionary** filter — selecting it queries both corpora at once. Shabdataaravali uses 1917 Malayalam orthography; headwords ending in `ு்` are archaic word-boundary markers, not errors.
+Shabdataaravali uses 1917 Malayalam orthography. Headwords ending in `ு்` are archaic word-boundary markers, not errors.
+
+---
+
+## Clickable words
+
+Malayalam words in definitions are clickable when they exist as their own dictionary entry. Clicking a word searches for it directly.
 
 ---
 
 ## AI synthesis (optional)
 
-By default, results are raw dictionary entries. Add an API key in [Settings](/settings) to enable AI synthesis — the app reads the top results and writes a plain-English explanation.
-
-**This is optional.** Smart search, Quick, and Exact modes all work without any key.
+By default, results are raw dictionary entries. Add an API key in [Settings](/settings) to enable AI synthesis — the app reads the top results and writes a plain-English explanation alongside them.
 
 ### How to get a key
 
-| Provider | Where to get a key | Key format |
+| Provider | Where | Key format |
 |---|---|---|
 | Anthropic (Claude) | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) | `sk-ant-…` |
 | OpenAI (GPT) | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | `sk-…` |
 
-Both providers offer free-tier or pay-as-you-go access. For casual dictionary use, costs are negligible (fractions of a cent per query).
-
-**Privacy:** your key is stored only in your browser's `localStorage`. It is sent directly to the AI provider with each request and is never stored on LinguAalayam's servers.
+**Privacy:** your key is stored only in your browser's `localStorage`. It is sent directly to the AI provider with each request and never stored on LinguAalayam's servers.
 
 ---
 
 ## Tips
 
-- **Mixed-language search:** you can type in English or Malayalam in any mode.
-- **Natural language in Smart mode:** phrasing like *"what does ephemeral mean"* or *"translate water to Malayalam"* works — the app extracts the word automatically.
-- **No results?** Try switching from Exact to Quick or Smart. Also try removing the corpus filter.
+- **No results?** Try removing the corpus filter.
+- **Manglish search:** *oduka* → *ഓടുക* is powered by [Varnam](https://varnamproject.com) (Subin Siby).
+- **Word valid in both languages?** Some words are real in both English and Manglish (*kali* → the goddess Kali, or *കലി*, "anger"). When that happens, the English result shows as usual, with a collapsed "Did you mean this in Malayalam?" link below it.
+- **Morphological context:** for Malayalam queries, the base form and grammatical role are shown above results, powered by [mlmorph](https://morph.smc.org.in/).
 - **MCP for AI assistants:** LinguAalayam is available as an MCP server at `https://linguaalayam.org/mcp`. See the [MCP setup guide](../linguaalayam/mcp/README.md) to connect Claude, Cursor, Windsurf, or Cline.
 
 ---
 
 ## Data sources
 
-Three corpora (Olam, Datuk, Ekkurup) are from the [Olam open-data initiative](https://olam.in/p/open). Shabdataaravali is from the [Sayahna Foundation](https://dict.sayahna.org). Full attribution and licence information: [DATA_SOURCES.md](../DATA_SOURCES.md).
-
----
-
-## Feedback and issues
-
-Something not working? A word missing? [Open an issue on GitHub](https://github.com/sachn1/linguaalayam/issues/new).
+All corpora are openly licensed. Full attribution: [DATA_SOURCES.md](../DATA_SOURCES.md).

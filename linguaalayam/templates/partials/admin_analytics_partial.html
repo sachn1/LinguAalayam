@@ -1,0 +1,71 @@
+<div class="stat-row">
+  <div class="stat-tile">
+    <div class="value">{{ total_requests }}</div>
+    <div class="label">requests ({{ window_minutes }} min)</div>
+  </div>
+  <div class="stat-tile">
+    <div class="value">{{ total_bots }}</div>
+    <div class="label">flagged as bot</div>
+  </div>
+</div>
+
+<div class="analytics-card">
+  <h2>By route</h2>
+  <table class="analytics-table">
+    <thead><tr><th>Route</th><th>Requests</th><th>Bot-flagged</th></tr></thead>
+    <tbody>
+      {% for route_type, count, bot_count in routes %}
+      <tr><td>{{ route_type }}</td><td>{{ count }}</td><td>{{ bot_count }}</td></tr>
+      {% else %}
+      <tr><td colspan="3">No requests in this window.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="analytics-card">
+  <h2>Top search terms</h2>
+  <table class="analytics-table">
+    <thead><tr><th>Query</th><th>Count</th></tr></thead>
+    <tbody>
+      {% for query, count in queries %}
+      <tr><td class="ml">{{ query }}</td><td>{{ count }}</td></tr>
+      {% else %}
+      <tr><td colspan="2">No search terms in this window.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="analytics-card">
+  <h2>Outbound link clicks</h2>
+  <table class="analytics-table">
+    <thead><tr><th>Link</th><th>Clicks</th></tr></thead>
+    <tbody>
+      {% for label, count in clicks %}
+      <tr><td>{{ label }}</td><td>{{ count }}</td></tr>
+      {% else %}
+      <tr><td colspan="2">No outbound clicks in this window.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="analytics-card">
+  <h2>Top clients</h2>
+  <table class="analytics-table">
+    <thead><tr><th>IP</th><th>Country</th><th>Requests</th><th></th></tr></thead>
+    <tbody>
+      {% for ip, country, count, mostly_bot in clients %}
+      <tr>
+        <td>{{ ip }}</td>
+        <td>{{ country or "—" }}</td>
+        <td>{{ count }}</td>
+        <td>{% if mostly_bot %}<span class="bot-tag">BOT?</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4">No clients in this window.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

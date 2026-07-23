@@ -10,6 +10,7 @@ from linguaalayam.database.queries import exact_search, fuzzy_search, similarity
 from linguaalayam.database.session import get_session
 from linguaalayam.embeddings.service import EmbeddingService
 from linguaalayam.models.orm import DictionaryEntry
+from linguaalayam.transliteration.morphology import get_lemma
 
 
 def merge_candidates(lists: list[list[dict]]) -> list[dict]:
@@ -72,6 +73,29 @@ class DictionaryTools:
     ) -> None:
         self._session_factory = session_factory
         self._embedder = embedding_service
+        self._ml_headword_set: frozenset[str] | None = None
+
+    def ml_headword_set(self) -> frozenset[str]:
+        """Return a cached frozenset of all Malayalam headwords (datuk + sayahna).
+
+        Used by the results template to determine which definition tokens are
+        clickable (i.e. exist as their own dictionary entry). Loaded once on
+        first call and cached for the lifetime of the process.
+
+        Returns
+        -------
+        frozenset[str]
+            All headwords from ML→ML corpora.
+        """
+        if self._ml_headword_set is None:
+            with get_session(self._session_factory) as session:
+                rows = (
+                    session.query(DictionaryEntry.headword)
+                    .filter(DictionaryEntry.source.in_(["datuk", "sayahna"]))
+                    .all()
+                )
+            self._ml_headword_set = frozenset(r.headword for r in rows)
+        return self._ml_headword_set
 
     def exact_lookup(
         self,
@@ -121,11 +145,56 @@ class DictionaryTools:
         Returns
         -------
         list[dict]
-            Matched entries with ``match_type="fuzzy"`` and pg_trgm similarity as score.
+            Matched entries with pg_trgm similarity as score. ``match_type`` is
+            normally ``"fuzzy"``, but candidates that share a dictionary lemma
+            with `query` (per mlmorph) are reclassified as ``"lemma"`` — e.g. a
+            hit for നിന്ദിക്കുന്നു is a genuine inflection of നിന്ദിക്കുക, not a
+            coincidental spelling match, even though pg_trgm alone can't tell
+            those two cases apart.
         """
+        query_lemma = get_lemma(query)
         with get_session(self._session_factory) as session:
             results = fuzzy_search(session, query, source=source, threshold=threshold, limit=top_k)
-        return [_to_result(r, "fuzzy", score) for r, score in results]
+
+        out = []
+        for entry, score in results:
+            related = query_lemma is not None and (
+                entry.headword == query_lemma or get_lemma(entry.headword) == query_lemma
+            )
+            out.append(_to_result(entry, "lemma" if related else "fuzzy", score))
+        return out
+
+    def lemma_lookup(
+        self,
+        query: str,
+        source: str | list[str] | None = None,
+    ) -> list[dict]:
+        """Return the dictionary entry for query's lemma, if query is an inflected form.
+
+        Analyses `query` with mlmorph to find its dictionary root (e.g. നിന്ദിക്കുന്നു
+        → നിന്ദിക്കുക) and looks that root up directly. This catches inflections
+        whose surface form is too different from the lemma for pg_trgm's trigram
+        overlap to surface them among :meth:`fuzzy_lookup`'s top candidates at all.
+
+        Parameters
+        ----------
+        query : str
+            Word to look up; expected to be an inflected Malayalam surface form.
+        source : str | list[str] | None, optional
+            Corpus filter; searches all corpora when ``None``.
+
+        Returns
+        -------
+        list[dict]
+            Entries for query's lemma with ``match_type="lemma"`` and ``score=1.0``,
+            or ``[]`` when query is already a base form or mlmorph can't analyse it.
+        """
+        lemma = get_lemma(query)
+        if not lemma or lemma == query:
+            return []
+        with get_session(self._session_factory) as session:
+            results = exact_search(session, lemma, source=source)
+        return [_to_result(r, "lemma", 1.0) for r in results]
 
     def semantic_lookup(
         self,

@@ -119,7 +119,7 @@ ignore-nested-functions = false
 fail-under = 80
 verbose = 0
 omit-covered-files = false
-exclude = ["migrations", "notebooks"]
+exclude = ["migrations", "notebooks", "linguaalayam/eval"]
 
 [tool.djlint]
 profile = "jinja"

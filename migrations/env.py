@@ -11,6 +11,10 @@ from sqlalchemy import create_engine, pool
 from alembic import context
 from linguaalayam.models.orm import Base
 
+# Imported for its side effect of registering RequestLog on Base.metadata, so
+# `alembic revision --autogenerate` sees it too. Unused directly in this module.
+from linguaalayam.observability.models import RequestLog  # noqa: F401
+
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 config = context.config

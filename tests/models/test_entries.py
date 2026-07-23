@@ -44,6 +44,11 @@ class TestOlamEntry:
         e = OlamEntry(headword="run", definitions=[])
         assert isinstance(e.to_embed_text(), str)
 
+    def test_morphology_always_none(self):
+        """English headwords should never get mlmorph analysis."""
+        e = OlamEntry(headword="run", definitions=[("v", "ഓടുക")])
+        assert e.morphology is None
+
 
 class TestDatukEntry:
     """DatukEntry construction and embed_text."""
@@ -57,6 +62,22 @@ class TestDatukEntry:
         """embed_text should include the Malayalam headword."""
         e = DatukEntry(headword="ഓടുക", definitions=[("v", "വേഗത്തിൽ ചലിക്കുക")])
         assert "ഓടുക" in e.to_embed_text()
+
+    def test_morphology_computed_at_construction(self):
+        """A real Malayalam headword should get mlmorph analysis, not silently None.
+
+        Regression test: _compute_morphology previously imported from the old
+        linguaalayam.morphology path (removed when morphology.py moved under
+        transliteration/), which made this always None via a swallowed ImportError.
+        """
+        e = DatukEntry(headword="ഓടുക", definitions=[("v", "വേഗത്തിൽ ചലിക്കുക")])
+        assert e.morphology is not None
+        assert len(e.morphology) > 0
+
+    def test_morphology_uses_first_variant_for_comma_separated_headword(self):
+        """Multi-variant headwords (e.g. 'foo, bar') should analyse only the first."""
+        e = DatukEntry(headword="ഓടുക, പായുക", definitions=[("v", "വേഗത്തിൽ ചലിക്കുക")])
+        assert e.morphology is not None
 
 
 class TestSayahnaEntry:

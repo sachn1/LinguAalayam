@@ -8,6 +8,7 @@
 - Python 3.11+
 - [Poetry](https://python-poetry.org/docs/#installation)
 - Docker (for the local Postgres + pgvector container)
+- Node.js 20+ (only for `make sync-jayasree` — vendors the handwriting-trace widget; the app runs fine without it, just without the trace button)
 
 ---
 
@@ -31,6 +32,7 @@ docker exec -it linguaalayam psql -U postgres -c "CREATE DATABASE linguaalayam;"
 ```bash
 poetry install
 poetry run pre-commit install
+make sync-jayasree   # optional — vendors the handwriting-trace widget from npm
 ```
 
 ---
@@ -48,6 +50,9 @@ DB_NAME=linguaalayam
 ANTHROPIC_API_KEY=sk-ant-...   # required for llm=anthropic (get from console.anthropic.com)
 OPENAI_API_KEY=sk-...          # required for llm=openai
 # DB_SSLMODE=require           # uncomment for hosted Postgres
+
+ADMIN_USER=admin               # HTTP Basic Auth for /admin/analytics (traffic dashboard)
+ADMIN_PASSWORD=changeme        # set a strong value — this path is public in source, only the password gates it
 ```
 
 ---
@@ -87,10 +92,17 @@ Ingestion is checkpoint-based — safe to restart after a failure without re-emb
 
 ---
 
+## Traffic dashboard
+
+`/admin/analytics` shows recent traffic — requests by route, top search terms, top clients, outbound-link clicks — gated by HTTP Basic Auth (`ADMIN_USER`/`ADMIN_PASSWORD` above). Requires `poetry run alembic upgrade head` to have created the `request_log` table.
+
+---
+
 ## Data sources
 
 | Corpus | Type | Status |
 |---|---|---|
 | Olam EN→ML | English → Malayalam | ✅ Active |
 | Datuk | Malayalam → Malayalam | ✅ Active |
+| Sayahna (Shabdataaravali, 1917) | Malayalam → Malayalam (classical) | ✅ Active |
 | Ekkurup | EN→ML thesaurus | ✅ Active |

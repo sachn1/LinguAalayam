@@ -1,7 +1,7 @@
 # Architecture
 
-Four independent subsystems share the same Postgres + pgvector database:
-the **ingestion pipeline**, the **RAG pipeline**, the **REST API / web UI**, and the **MCP server**.
+Five independent subsystems share the same Postgres + pgvector database:
+the **ingestion pipeline**, the **RAG pipeline**, the **REST API / web UI**, the **MCP server**, and **observability**.
 
 Four corpora are active: **Olam** (EN→ML), **Datuk** (ML→ML), **Shabdataaravali / Sayahna** (ML→ML, classical 1917 dictionary), and **Ekkurup** (EN→ML thesaurus). Each corpus is wired via a `parser._target_` entry in `config/corpus/all.yaml`; no Python code change is needed to add a new corpus.
 
@@ -71,6 +71,23 @@ No LLM involvement — pure retrieval. The embedding model loads once at startup
 
 ---
 
+## Observability
+
+```mermaid
+flowchart LR
+    REQ[any HTTP request] --> MW[RequestLoggingMiddleware: ASGI]
+    MW -- excludes /admin, /health, /track/click --> RL[(request_log table)]
+    CLICK[client-side click: jayasree, ml2en, web_speech, outbound links] --> TC[POST /track/click]
+    TC --> RL
+    VARNAM[Varnam manglish fallback in /search] --> FE[log_feature_event]
+    FE --> RL
+    RL --> AD[/admin/analytics: HTMX-polling dashboard, Basic Auth/]
+```
+
+Every inbound request is logged once, classified into a `route_type` (`web_search`, `lookup_*`, `mcp`, `mcp_setup_page`, `api_docs`, `outbound_click`, `jayasree`, `ml2en`, `web_speech`, `varnam`, …). Client-side interactions with no server route of their own (or that would otherwise be misclassified, like a romanise-toggle re-triggering `/search`) are reported via a `sendBeacon` to `POST /track/click`, validated against a label allow-list. The dashboard at `/admin/analytics` is gated by HTTP Basic Auth and never publicly linked.
+
+---
+
 ## Module reference
 
 | Module | Purpose |
@@ -87,8 +104,13 @@ No LLM involvement — pure retrieval. The embedding model loads once at startup
 | `linguaalayam/mcp/server.py` | FastMCP server — three tools + `dictionary://{headword}` resource |
 | `linguaalayam/scripts/ingest.py` | Ingestion entry point; corpus parsers injected via Hydra `_target_` — no hardcoded parser map |
 | `linguaalayam/translation/` | `TranslationService` ABC + `MarianTranslationService` (Helsinki-NLP/opus-mt-mul-en); lazy-loaded, translates non-EN/ML input to English before search |
-| `linguaalayam/morphology.py` | `analyse_word()` — mlmorph-based Malayalam morphological analyser; LRU-cached, handles archaic chillu normalisation |
+| `linguaalayam/transliteration/core.py` | `is_latin_script()`, `malayalam_to_roman()`, `normalize_roman()`, `roman_to_malayalam_candidates()` — formal romanisation schemes |
+| `linguaalayam/transliteration/morphology.py` | `analyse_word()` — mlmorph-based Malayalam morphological analyser; LRU-cached, handles archaic chillu normalisation; computed once at ingest time and stored on `DatukEntry`/`SayahnaEntry` |
+| `linguaalayam/transliteration/varnam.py` | `manglish_to_malayalam()` — Varnam API client for informal Manglish transliteration; falls back to `core.roman_to_malayalam_candidates()` when unavailable |
 | `linguaalayam/env.py` | Centralised env loader; reads secrets from Windows Credential Manager on WSL, falls back to `.env` |
+| `linguaalayam/observability/` | `RequestLog` ORM model, `RequestLoggingMiddleware` (ASGI), `log_feature_event()`, and query helpers backing `/admin/analytics` |
+| `linguaalayam/api/admin.py` | `/admin/analytics` dashboard + HTMX partial, HTTP Basic Auth via `ADMIN_USER`/`ADMIN_PASSWORD` |
+| `linguaalayam/static/vendor/jayasree/` | Vendored from the [`jayasree`](https://github.com/sachn1/jayasree) npm package by `scripts/sync_jayasree.sh` (`make sync-jayasree`); not committed — regenerated at build time from `package.json`. Powers the per-word handwriting trace button on Malayalam headwords, lazy-loaded client-side |
 | `config/` | Hydra config groups: `corpus` (with per-source `parser._target_`), `embedding`, `database`, `llm`, `rag` |
 | `migrations/` | Alembic schema migrations |
 

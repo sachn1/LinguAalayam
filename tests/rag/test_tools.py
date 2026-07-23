@@ -159,3 +159,109 @@ class TestDictionaryTools:
         mock_es.assert_called_once()
         _, kwargs = mock_es.call_args
         assert kwargs.get("source") == "olam_enml" or mock_es.call_args[0][2] == "olam_enml"
+
+    def test_fuzzy_lookup_reclassifies_shared_lemma_as_lemma(self):
+        """A fuzzy candidate that's a true inflection of the query becomes match_type='lemma'."""
+        tools, _, _ = self._make_tools()
+        mock_entry = MagicMock()
+        mock_entry.headword = "നിന്ദിക്കുക"  # dictionary lemma the inflected query shares
+        mock_entry.source = "datuk"
+        mock_entry.entry_type = "DatukEntry"
+        mock_entry.embed_text = "word: നിന്ദിക്കുക"
+        mock_entry.data = {}
+
+        with (
+            patch("linguaalayam.rag.tools.get_session", return_value=self._mock_session_ctx()),
+            patch("linguaalayam.rag.tools.fuzzy_search", return_value=[(mock_entry, 0.62)]),
+        ):
+            results = tools.fuzzy_lookup("നിന്ദിക്കുന്നു")  # present tense of the same verb
+
+        assert len(results) == 1
+        assert results[0]["match_type"] == "lemma"
+        assert results[0]["score"] == 0.62  # real trigram score is preserved, not overwritten
+
+    def test_fuzzy_lookup_english_self_match_is_not_reclassified_as_lemma(self):
+        """Regression: querying an English word like 'run' must not get treated
+        as a self-lemma match (mlmorph's foreign-word fallback used to echo
+        'run' back as its own "root", trivially satisfying the relatedness
+        check and wrongly suppressing every other genuine fuzzy candidate)."""
+        tools, _, _ = self._make_tools()
+        exact_self = MagicMock()
+        exact_self.headword = "run"
+        exact_self.source = "olam_enml"
+        exact_self.entry_type = "OlamEntry"
+        exact_self.embed_text = "word: run"
+        exact_self.data = {}
+
+        other = MagicMock()
+        other.headword = "runner"
+        other.source = "olam_enml"
+        other.entry_type = "OlamEntry"
+        other.embed_text = "word: runner"
+        other.data = {}
+
+        with (
+            patch("linguaalayam.rag.tools.get_session", return_value=self._mock_session_ctx()),
+            patch(
+                "linguaalayam.rag.tools.fuzzy_search",
+                return_value=[(exact_self, 1.0), (other, 0.5)],
+            ),
+        ):
+            results = tools.fuzzy_lookup("run")
+
+        assert [r["match_type"] for r in results] == ["fuzzy", "fuzzy"]
+
+    def test_fuzzy_lookup_keeps_unrelated_spelling_matches_as_fuzzy(self):
+        """A candidate that only looks similar (different mlmorph lemma) stays 'fuzzy'."""
+        tools, _, _ = self._make_tools()
+        mock_entry = MagicMock()
+        mock_entry.headword = "നന്ദിക്കുക"  # "to thank" — spelling-adjacent, unrelated meaning
+        mock_entry.source = "datuk"
+        mock_entry.entry_type = "DatukEntry"
+        mock_entry.embed_text = "word: നന്ദിക്കുക"
+        mock_entry.data = {}
+
+        with (
+            patch("linguaalayam.rag.tools.get_session", return_value=self._mock_session_ctx()),
+            patch("linguaalayam.rag.tools.fuzzy_search", return_value=[(mock_entry, 0.64)]),
+        ):
+            results = tools.fuzzy_lookup("നിന്ദിക്കുക")  # "to insult" — different root
+
+        assert len(results) == 1
+        assert results[0]["match_type"] == "fuzzy"
+
+    def test_lemma_lookup_resolves_inflected_query_to_its_root(self):
+        """lemma_lookup should look up the query's mlmorph root, not the query itself."""
+        tools, _, _ = self._make_tools()
+        mock_entry = MagicMock()
+        mock_entry.headword = "നിന്ദിക്കുക"
+        mock_entry.source = "datuk"
+        mock_entry.entry_type = "DatukEntry"
+        mock_entry.embed_text = "word: നിന്ദിക്കുക"
+        mock_entry.data = {}
+
+        with (
+            patch("linguaalayam.rag.tools.get_session", return_value=self._mock_session_ctx()),
+            patch("linguaalayam.rag.tools.exact_search", return_value=[mock_entry]) as mock_es,
+        ):
+            results = tools.lemma_lookup("നിന്ദിക്കുന്നു")
+
+        mock_es.assert_called_once()
+        assert mock_es.call_args[0][1] == "നിന്ദിക്കുക"  # looked up the lemma, not the query
+        assert len(results) == 1
+        assert results[0]["match_type"] == "lemma"
+        assert results[0]["score"] == 1.0
+
+    def test_lemma_lookup_empty_when_query_is_already_a_base_form(self):
+        """lemma_lookup should no-op when mlmorph's root equals the query itself."""
+        tools, _, _ = self._make_tools()
+        with patch("linguaalayam.rag.tools.get_session", return_value=self._mock_session_ctx()):
+            results = tools.lemma_lookup("നിന്ദിക്കുക")
+        assert results == []
+
+    def test_lemma_lookup_empty_when_unanalysable(self):
+        """lemma_lookup should no-op for words mlmorph can't analyse (e.g. English)."""
+        tools, _, _ = self._make_tools()
+        with patch("linguaalayam.rag.tools.get_session", return_value=self._mock_session_ctx()):
+            results = tools.lemma_lookup("xyzzy")
+        assert results == []
