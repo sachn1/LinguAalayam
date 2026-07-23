@@ -10,17 +10,22 @@ no user accounts. Tokens are in-memory; a server restart invalidates them and cl
 re-authorize automatically.
 """
 
+import logging
 import os
 
 from pydantic import AnyHttpUrl
 from starlette.applications import Starlette
+from starlette.requests import Request
 
 from linguaalayam.api.dependencies import get_tools
 from linguaalayam.api.oauth import PassthroughOAuthProvider
 from linguaalayam.mcp.shared import format_results as _format
+from linguaalayam.observability import log_feature_event
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+
+log = logging.getLogger(__name__)
 
 _ISSUER_URL = os.environ.get("MCP_ISSUER_URL", "http://localhost:8000/mcp")
 
@@ -55,21 +60,43 @@ mcp = FastMCP(
 )
 
 
+def _log_tool_call(ctx: Context, tool: str, query: str) -> None:
+    """Best-effort per-tool MCP usage logging — never let it break a tool call.
+
+    Streamable-HTTP transport (used at /mcp) exposes the underlying Starlette
+    Request via ctx.request_context.request, giving IP/UA/country the same
+    way any other route gets it — stdio transport (linguaalayam/mcp/server.py,
+    `poetry run mcp-server`) has no such request, so this is a no-op there.
+
+    ctx.request_context is a property that raises (not returns None) when
+    accessed outside an active request — wrap the whole thing, not just the
+    log call, or that raise propagates straight out of the tool.
+    """
+    try:
+        request = ctx.request_context.request if ctx.request_context else None
+        if isinstance(request, Request):
+            log_feature_event(f"mcp_{tool}", request, query=query)
+    except Exception:  # pragma: no cover — logging must never break a tool call
+        log.warning("Failed to record MCP tool-call event for %r", tool, exc_info=True)
+
+
 @mcp.resource("dictionary://{headword}")
-def get_entry(headword: str) -> str:
+def get_entry(headword: str, ctx: Context) -> str:
     """Browse a dictionary entry by URI (e.g. dictionary://run)."""
+    _log_tool_call(ctx, "resource", headword)
     results = get_tools().exact_lookup(headword)
     return _format(results, headword, "exact")
 
 
 @mcp.tool()
-def exact_lookup(word: str, source: str | None = None) -> str:
+def exact_lookup(word: str, ctx: Context, source: str | None = None) -> str:
     """Look up a word by exact headword match (case-insensitive).
 
     Args:
         word: The word to look up (English or Malayalam).
         source: Optional corpus filter (e.g. "olam_enml"). Searches all corpora if omitted.
     """
+    _log_tool_call(ctx, "exact_lookup", word)
     results = get_tools().exact_lookup(word, source=source)
     return _format(results, word, "exact")
 
@@ -77,6 +104,7 @@ def exact_lookup(word: str, source: str | None = None) -> str:
 @mcp.tool()
 def fuzzy_lookup(
     query: str,
+    ctx: Context,
     threshold: float = 0.3,
     top_k: int = 10,
     source: str | None = None,
@@ -89,6 +117,7 @@ def fuzzy_lookup(
         top_k: Maximum number of results to return. Default 10.
         source: Optional corpus filter. Searches all corpora if omitted.
     """
+    _log_tool_call(ctx, "fuzzy_lookup", query)
     results = get_tools().fuzzy_lookup(query, source=source, threshold=threshold, top_k=top_k)
     return _format(results, query, "fuzzy")
 
@@ -96,6 +125,7 @@ def fuzzy_lookup(
 @mcp.tool()
 def semantic_lookup(
     query: str,
+    ctx: Context,
     top_k: int = 5,
     source: str | None = None,
 ) -> str:
@@ -106,6 +136,7 @@ def semantic_lookup(
         top_k: Number of top results to return. Default 5.
         source: Optional corpus filter. Searches all corpora if omitted.
     """
+    _log_tool_call(ctx, "semantic_lookup", query)
     results = get_tools().semantic_lookup(query, top_k=top_k, source=source)
     return _format(results, query, "semantic")
 

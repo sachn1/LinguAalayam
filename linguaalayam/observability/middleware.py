@@ -4,6 +4,7 @@ import logging
 import re
 import time
 
+from anyio import to_thread
 from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -28,6 +29,7 @@ _ROUTE_TYPES: list[tuple[str, str]] = [
     ("/health", "health"),
     ("/docs", "api_docs"),
     ("/openapi.json", "api_docs"),
+    ("/static", "static"),
 ]
 
 # Paths never worth a request_log row from the generic middleware: the analytics
@@ -89,7 +91,16 @@ class RequestLoggingMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
-            self._record(scope, status_holder.get("status", 0), (time.monotonic() - start) * 1000)
+            # By this point the response has already been fully sent via
+            # send_wrapper — the client isn't waiting on anything below.
+            # _record() does a blocking DB write (sync SQLAlchemy session);
+            # running it inline here would stall the event loop — and every
+            # other concurrent request on it — for the duration of that
+            # write. to_thread.run_sync offloads it to a worker thread so
+            # logging never taxes request latency for anyone.
+            duration_ms = (time.monotonic() - start) * 1000
+            status_code = status_holder.get("status", 0)
+            await to_thread.run_sync(self._record, scope, status_code, duration_ms)
 
     @staticmethod
     def _record(scope: Scope, status_code: int, duration_ms: float) -> None:
