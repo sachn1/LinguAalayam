@@ -34,10 +34,19 @@
         hx-include="#source,#lang"
         hx-indicator="#spinner"
       />
-      {# Mic button sits inside the input wrapper, shown only when SpeechRecognition is available #}
-      <button id="mic-btn" class="mic-btn" type="button" aria-label="Voice search" style="display:none">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-2 13.9A6 6 0 0 0 18 9h2a8 8 0 0 1-7 7.93V21h-2v-4.07A8 8 0 0 1 4 9h2a6 6 0 0 0 6 5.9z"/></svg>
-      </button>
+      {# Mic group (voice-search language picker + mic button) sits inside the
+         input wrapper, shown only when SpeechRecognition is available. The flag
+         button is grouped directly against the mic icon — not placed elsewhere
+         on the page — so it reads unambiguously as "language to speak in", not
+         a general input/interface language setting. #}
+      <div id="mic-group" class="mic-group" style="display:none">
+        <button id="mic-lang-btn" class="mic-lang-btn" type="button" aria-haspopup="listbox"
+                aria-label="Voice search language" title="Voice search language — tap to change" tabindex="-1">🇺🇸</button>
+        <ul id="mic-lang-options" class="mic-lang-options" role="listbox" aria-label="Voice search language"></ul>
+        <button id="mic-btn" class="mic-btn" type="button" aria-label="Voice search — tap and speak" title="Voice search — tap and speak">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-2 13.9A6 6 0 0 0 18 9h2a8 8 0 0 1-7 7.93V21h-2v-4.07A8 8 0 0 1 4 9h2a6 6 0 0 0 6 5.9z"/></svg>
+        </button>
+      </div>
     </div>
     <span id="spinner" class="htmx-indicator"><span class="spinner"></span></span>
   </div>
@@ -80,6 +89,19 @@
   </details>
 </div>
 
+{# First-time voice-search onboarding — shown once, before the very first
+   recognition run, so a new user picks their speech language deliberately
+   instead of silently inheriting the browser locale. #}
+<div id="mic-lang-modal" class="mic-lang-modal-overlay" style="display:none">
+  <div class="mic-lang-modal" role="dialog" aria-modal="true" aria-labelledby="mic-lang-modal-title">
+    <button class="mic-lang-modal-close" id="mic-lang-modal-close" aria-label="Skip">✕</button>
+    <p class="mic-lang-modal-emoji">🎙️</p>
+    <h3 id="mic-lang-modal-title">Which language will you speak?</h3>
+    <p class="mic-lang-modal-hint">You can change this anytime from the flag next to the mic.</p>
+    <div class="mic-lang-modal-grid" id="mic-lang-modal-grid"></div>
+  </div>
+</div>
+
 <div id="results"></div>
 
 <style>
@@ -92,18 +114,57 @@
   }
   .search-input-wrap input[type="text"] {
     width: 100%;
-    padding-right: 2.2rem; /* room for mic button */
+    padding-right: 3.8rem; /* room for the language + mic button group */
   }
-  .mic-btn {
+  .mic-group {
     position: absolute;
-    right: 0.5rem;
+    right: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    padding: 0.1rem;
+  }
+  .mic-lang-btn {
+    position: relative;
     background: none;
     border: none;
-    padding: 0.25rem;
+    font-size: 0.8rem;
+    line-height: 1;
+    padding: 0.25rem 0.3rem;
+    cursor: pointer;
+    border-radius: 999px;
+  }
+  .mic-lang-btn:hover { background: var(--bg); }
+  .mic-lang-options {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    list-style: none;
+    margin: 0;
+    padding: 0.25rem 0;
+    z-index: 200;
+    min-width: 6rem;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  }
+  .mic-lang-options.open { display: block; }
+  .mic-lang-options li { padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.82rem; white-space: nowrap; }
+  .mic-lang-options li:hover { background: var(--bg); }
+  .mic-lang-options li.selected { color: var(--accent); font-weight: 600; }
+  .mic-btn {
+    background: none;
+    border: none;
+    padding: 0.3rem;
     cursor: pointer;
     color: var(--text-muted);
     line-height: 0;
-    border-radius: 4px;
+    border-radius: 999px;
   }
   .mic-btn:hover { color: var(--accent); }
   .mic-btn.mic-active { color: #ef4444; animation: mic-pulse 1s ease-in-out infinite; }
@@ -119,21 +180,122 @@
     font-weight: 600;
     color: var(--text);
   }
+  .mic-lang-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 46, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    padding: 1rem;
+  }
+  .mic-lang-modal {
+    position: relative;
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 1.75rem 1.5rem 1.5rem;
+    max-width: 320px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+  }
+  .mic-lang-modal-close {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    background: none;
+    border: none;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.3rem;
+    line-height: 1;
+    border-radius: 999px;
+  }
+  .mic-lang-modal-close:hover { color: var(--text); background: var(--bg); }
+  .mic-lang-modal-emoji { font-size: 2rem; margin-bottom: 0.25rem; }
+  .mic-lang-modal h3 { font-size: 1rem; margin-bottom: 0.35rem; }
+  .mic-lang-modal-hint { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1.1rem; }
+  .mic-lang-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+  .mic-lang-modal-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.5rem 0.25rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.75rem;
+    color: var(--text);
+  }
+  .mic-lang-modal-btn:hover { border-color: var(--accent); background: #fff8f0; }
+  .mic-lang-modal-btn .flag { font-size: 1.15rem; }
 </style>
 <script>
 (function () {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const micBtn   = document.getElementById('mic-btn');
+  const micGroup  = document.getElementById('mic-group');
+  const micBtn    = document.getElementById('mic-btn');
+  const langBtn   = document.getElementById('mic-lang-btn');
+  const langOpts  = document.getElementById('mic-lang-options');
   const hiddenSel = document.getElementById('lang');
-  if (!SR || !micBtn || !hiddenSel) return;
+  if (!SR || !micGroup || !micBtn || !langBtn || !langOpts || !hiddenSel) return;
 
-  // Use browser language as speech recognition locale
-  hiddenSel.value = navigator.language || 'en-US';
-  micBtn.style.display = 'flex';
+  const LANGS = [
+    { value: 'en-US', flag: '🇺🇸', label: 'EN' },
+    { value: 'ml-IN', flag: '🇮🇳', label: 'മ' },
+    { value: 'de-DE', flag: '🇩🇪', label: 'DE' },
+    { value: 'fr-FR', flag: '🇫🇷', label: 'FR' },
+    { value: 'ru-RU', flag: '🇷🇺', label: 'RU' },
+    { value: 'es-ES', flag: '🇪🇸', label: 'ES' },
+    { value: 'pt-PT', flag: '🇵🇹', label: 'PT' },
+    { value: 'zh-CN', flag: '🇨🇳', label: '中文' },
+    { value: 'ar-SA', flag: '🇸🇦', label: 'عر' },
+    { value: 'ur-PK', flag: '🇵🇰', label: 'اردو' },
+    { value: 'hi-IN', flag: '🇮🇳', label: 'हि' },
+    { value: 'ta-IN', flag: '🇮🇳', label: 'தமி' },
+    { value: 'bn-IN', flag: '🇮🇳', label: 'বাং' },
+  ];
+
+  langOpts.innerHTML = LANGS.map(l =>
+    `<li role="option" data-value="${l.value}">${l.flag} ${l.label}</li>`
+  ).join('');
+
+  function setSpeechLang(value) {
+    const entry = LANGS.find(l => l.value === value) || LANGS[0];
+    hiddenSel.value = entry.value;
+    langBtn.textContent = entry.flag;
+    langBtn.title = 'Voice search language: ' + entry.label + ' — tap to change';
+    langOpts.querySelectorAll('li').forEach(li =>
+      li.classList.toggle('selected', li.dataset.value === entry.value)
+    );
+    localStorage.setItem('speech_lang', entry.value);
+  }
+
+  setSpeechLang(localStorage.getItem('speech_lang') || navigator.language || 'en-US');
+  micGroup.style.display = 'flex';
+
+  function isOnboarded() { return !!localStorage.getItem('mic_lang_onboarded'); }
+
+  langOpts.querySelectorAll('li').forEach(function (li) {
+    li.addEventListener('click', function () {
+      setSpeechLang(li.dataset.value);
+      langOpts.classList.remove('open');
+    });
+  });
+  document.addEventListener('click', function () { langOpts.classList.remove('open'); });
 
   let recognition = null;
-  micBtn.addEventListener('click', function () {
-    if (recognition) { recognition.abort(); return; }
+  function startRecognition() {
+    trackClick('web_speech');
     recognition = new SR();
     recognition.lang = hiddenSel.value;
     recognition.continuous = false;
@@ -147,6 +309,66 @@
       htmx.trigger(input, 'input');
     };
     recognition.start();
+  }
+
+  // First-time onboarding modal — shown once, from whichever of the mic or
+  // flag button is clicked first, so a new user deliberately picks their
+  // speech language instead of silently inheriting the browser locale.
+  // Voice search only auto-starts afterwards if the mic itself was the
+  // trigger — clicking the flag first should just set a language, not
+  // unexpectedly start listening.
+  const modal     = document.getElementById('mic-lang-modal');
+  const modalGrid = document.getElementById('mic-lang-modal-grid');
+  const modalClose = document.getElementById('mic-lang-modal-close');
+  let modalOpenedFromMic = false;
+  let openLangModal = function () {};
+  let closeLangModal = function () {};
+
+  if (modal && modalGrid && modalClose) {
+    modalGrid.innerHTML = LANGS.map(l =>
+      `<button type="button" class="mic-lang-modal-btn" data-value="${l.value}">` +
+      `<span class="flag">${l.flag}</span><span>${l.label}</span></button>`
+    ).join('');
+
+    openLangModal = function (fromMic) {
+      modalOpenedFromMic = fromMic;
+      modal.style.display = 'flex';
+    };
+    closeLangModal = function () { modal.style.display = 'none'; };
+
+    modalClose.addEventListener('click', function () {
+      localStorage.setItem('mic_lang_onboarded', '1');
+      closeLangModal();
+    });
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) modalClose.click();
+    });
+    modalGrid.querySelectorAll('.mic-lang-modal-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setSpeechLang(btn.dataset.value);
+        localStorage.setItem('mic_lang_onboarded', '1');
+        closeLangModal();
+        if (modalOpenedFromMic) startRecognition();
+      });
+    });
+  }
+
+  langBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (modal && !isOnboarded()) {
+      openLangModal(false);
+      return;
+    }
+    langOpts.classList.toggle('open');
+  });
+
+  micBtn.addEventListener('click', function () {
+    if (recognition) { recognition.abort(); return; }
+    if (modal && !isOnboarded()) {
+      openLangModal(true);
+      return;
+    }
+    startRecognition();
   });
 })();
 </script>
