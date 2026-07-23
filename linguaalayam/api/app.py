@@ -18,12 +18,15 @@ from pydantic import BaseModel
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 
-from linguaalayam.api.dependencies import get_tools, set_tools, set_translator
+from linguaalayam.api.admin import router as _admin_router
+from linguaalayam.api.dependencies import get_tools, set_session_factory, set_tools, set_translator
 from linguaalayam.api.web import router as _web_router
 from linguaalayam.database import build_engine, build_session_factory
 from linguaalayam.embeddings import EmbeddingService
 from linguaalayam.env import load_env
 from linguaalayam.mcp.remote import get_mcp_app, mcp
+from linguaalayam.observability import RequestLoggingMiddleware
+from linguaalayam.observability import click_tracking_router as _click_tracking_router
 from linguaalayam.rag.tools import DictionaryTools
 from linguaalayam.translation import build_translation_service
 
@@ -86,6 +89,7 @@ def _init_tools() -> DictionaryTools:
     )
     engine = build_engine(db_cfg)
     session_factory = build_session_factory(engine)
+    set_session_factory(session_factory)
     service = EmbeddingService(embed_cfg)
     return DictionaryTools(session_factory, service)
 
@@ -122,12 +126,15 @@ app = FastAPI(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(RequestLoggingMiddleware)
 
 _STATIC = Path(__file__).resolve().parents[1] / "static"
 _mcp_starlette = get_mcp_app()
 
 app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 app.include_router(_web_router)
+app.include_router(_admin_router)
+app.include_router(_click_tracking_router)
 app.mount("/mcp", _mcp_starlette)
 
 
