@@ -16,6 +16,7 @@ from linguaalayam.observability import (
     top_clients,
     top_outbound_clicks,
     top_queries,
+    top_user_agents,
     traffic_by_route_type,
 )
 
@@ -76,6 +77,7 @@ def analytics_partial(
         queries = top_queries(session, since, limit=10)
         clients = top_clients(session, since, limit=10)
         clicks = top_outbound_clicks(session, since, limit=10)
+        user_agents = top_user_agents(session, since, limit=10)
 
     total_requests = sum(count for _, count, _ in routes)
     total_bots = sum(bot_count for _, _, bot_count in routes)
@@ -91,5 +93,6 @@ def analytics_partial(
             "queries": queries,
             "clients": clients,
             "clicks": clicks,
+            "user_agents": user_agents,
         },
     )
