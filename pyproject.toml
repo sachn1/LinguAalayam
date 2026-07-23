@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "linguaalayam"
-version = "2.8.0"
+version = "2.9.0"
 description = "Your companion for Malayalam and English words - abode of words."
 authors = ["Sachin Nandakumar"]
 readme = "README.md"
