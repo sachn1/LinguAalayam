@@ -3,7 +3,10 @@
 {% block content %}
 <div class="search-box">
   <div class="search-row">
-    {# Hidden lang select — value set from browser locale, used only by speech recognition #}
+    {# Hidden lang select — value set from browser locale. Drives the source
+       language for both typed and spoken queries (Marian translation) as well
+       as the speech-recognition locale; there is no automatic language
+       detection, so this is the only signal the input language comes from. #}
     <select id="lang" name="lang" style="display:none" aria-hidden="true">
       <option value="en-US"></option>
       <option value="ml-IN"></option>
@@ -35,16 +38,19 @@
         hx-include="#source,#lang"
         hx-indicator="#spinner"
       />
-      {# Mic group (voice-search language picker + mic button) sits inside the
-         input wrapper, shown only when SpeechRecognition is available. The flag
-         button is grouped directly against the mic icon — not placed elsewhere
-         on the page — so it reads unambiguously as "language to speak in", not
-         a general input/interface language setting. #}
-      <div id="mic-group" class="mic-group" style="display:none">
-        <button id="mic-lang-btn" class="mic-lang-btn" type="button" aria-haspopup="listbox"
-                aria-label="Voice search language" title="Voice search language — tap to change" tabindex="-1">🇺🇸</button>
-        <ul id="mic-lang-options" class="mic-lang-options" role="listbox" aria-label="Voice search language"></ul>
-        <button id="mic-btn" class="mic-btn" type="button" aria-label="Voice search — tap and speak" title="Voice search — tap and speak">
+      {# Input tools sit inside the input wrapper. The flag is the input
+         language control — it governs typed queries just as much as spoken
+         ones (translation source language, since we don't run any automatic
+         language detection), so it's always visible regardless of whether
+         voice search is supported. The mic button is a separate, optional
+         control shown only when SpeechRecognition is available. #}
+      <div id="input-tools" class="input-tools">
+        <div id="lang-group" class="lang-group">
+          <button id="mic-lang-btn" class="mic-lang-btn" type="button" aria-haspopup="listbox"
+                  aria-label="Input language" title="Input language — tap to change" tabindex="-1">🇺🇸</button>
+          <ul id="mic-lang-options" class="mic-lang-options" role="listbox" aria-label="Input language"></ul>
+        </div>
+        <button id="mic-btn" class="mic-btn" type="button" style="display:none" aria-label="Voice search — tap and speak" title="Voice search — tap and speak">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-2 13.9A6 6 0 0 0 18 9h2a8 8 0 0 1-7 7.93V21h-2v-4.07A8 8 0 0 1 4 9h2a6 6 0 0 0 6 5.9z"/></svg>
         </button>
       </div>
@@ -90,15 +96,16 @@
   </details>
 </div>
 
-{# First-time voice-search onboarding — shown once, before the very first
-   recognition run, so a new user picks their speech language deliberately
-   instead of silently inheriting the browser locale. #}
+{# First-time input-language onboarding — shown once, before the first typed
+   or spoken query, so a new user picks their input language deliberately
+   instead of silently inheriting the browser locale (there is no automatic
+   language detection, so this choice is what makes translation work). #}
 <div id="mic-lang-modal" class="mic-lang-modal-overlay" style="display:none">
   <div class="mic-lang-modal" role="dialog" aria-modal="true" aria-labelledby="mic-lang-modal-title">
     <button class="mic-lang-modal-close" id="mic-lang-modal-close" aria-label="Skip">✕</button>
-    <p class="mic-lang-modal-emoji">🎙️</p>
-    <h3 id="mic-lang-modal-title">Which language will you speak?</h3>
-    <p class="mic-lang-modal-hint">You can change this anytime from the flag next to the mic.</p>
+    <p class="mic-lang-modal-emoji">🏳️</p>
+    <h3 id="mic-lang-modal-title">What language are you searching in?</h3>
+    <p class="mic-lang-modal-hint">You can change this anytime from the flag next to the search box.</p>
     <div class="mic-lang-modal-grid" id="mic-lang-modal-grid"></div>
   </div>
 </div>
@@ -117,7 +124,7 @@
     width: 100%;
     padding-right: 3.8rem; /* room for the language + mic button group */
   }
-  .mic-group {
+  .input-tools {
     position: absolute;
     right: 0.35rem;
     display: flex;
@@ -127,6 +134,11 @@
     border-radius: 999px;
     background: var(--surface);
     padding: 0.1rem;
+  }
+  .lang-group {
+    position: relative;
+    display: flex;
+    align-items: center;
   }
   .mic-lang-btn {
     position: relative;
@@ -243,12 +255,11 @@
 <script>
 (function () {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const micGroup  = document.getElementById('mic-group');
   const micBtn    = document.getElementById('mic-btn');
   const langBtn   = document.getElementById('mic-lang-btn');
   const langOpts  = document.getElementById('mic-lang-options');
   const hiddenSel = document.getElementById('lang');
-  if (!SR || !micGroup || !micBtn || !langBtn || !langOpts || !hiddenSel) return;
+  if (!langBtn || !langOpts || !hiddenSel) return;
 
   const LANGS = [
     { value: 'en-US', flag: '🇺🇸', label: 'EN' },
@@ -270,25 +281,24 @@
     `<li role="option" data-value="${l.value}">${l.flag} ${l.label}</li>`
   ).join('');
 
-  function setSpeechLang(value) {
+  function setInputLang(value) {
     const entry = LANGS.find(l => l.value === value) || LANGS[0];
     hiddenSel.value = entry.value;
     langBtn.textContent = entry.flag;
-    langBtn.title = 'Voice search language: ' + entry.label + ' — tap to change';
+    langBtn.title = 'Input language: ' + entry.label + ' — tap to change';
     langOpts.querySelectorAll('li').forEach(li =>
       li.classList.toggle('selected', li.dataset.value === entry.value)
     );
     localStorage.setItem('speech_lang', entry.value);
   }
 
-  setSpeechLang(localStorage.getItem('speech_lang') || navigator.language || 'en-US');
-  micGroup.style.display = 'flex';
+  setInputLang(localStorage.getItem('speech_lang') || navigator.language || 'en-US');
 
   function isOnboarded() { return !!localStorage.getItem('mic_lang_onboarded'); }
 
   langOpts.querySelectorAll('li').forEach(function (li) {
     li.addEventListener('click', function () {
-      setSpeechLang(li.dataset.value);
+      setInputLang(li.dataset.value);
       langOpts.classList.remove('open');
     });
   });
@@ -312,12 +322,16 @@
     recognition.start();
   }
 
-  // First-time onboarding modal — shown once, from whichever of the mic or
-  // flag button is clicked first, so a new user deliberately picks their
-  // speech language instead of silently inheriting the browser locale.
-  // Voice search only auto-starts afterwards if the mic itself was the
-  // trigger — clicking the flag first should just set a language, not
-  // unexpectedly start listening.
+  if (SR && micBtn) {
+    micBtn.style.display = 'flex';
+  }
+
+  // First-time onboarding modal — shown once, from whichever of the input
+  // language flag or the mic button is clicked first, so a new user
+  // deliberately picks their input language instead of silently inheriting
+  // the browser locale. Voice search only auto-starts afterwards if the mic
+  // itself was the trigger — clicking the flag first should just set a
+  // language, not unexpectedly start listening.
   const modal     = document.getElementById('mic-lang-modal');
   const modalGrid = document.getElementById('mic-lang-modal-grid');
   const modalClose = document.getElementById('mic-lang-modal-close');
@@ -346,7 +360,7 @@
     });
     modalGrid.querySelectorAll('.mic-lang-modal-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        setSpeechLang(btn.dataset.value);
+        setInputLang(btn.dataset.value);
         localStorage.setItem('mic_lang_onboarded', '1');
         closeLangModal();
         if (modalOpenedFromMic) startRecognition();
@@ -362,6 +376,8 @@
     }
     langOpts.classList.toggle('open');
   });
+
+  if (!SR || !micBtn) return;
 
   micBtn.addEventListener('click', function () {
     if (recognition) { recognition.abort(); return; }
